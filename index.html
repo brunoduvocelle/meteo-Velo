@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeteoCommute V37 - Correction Recherche</title>
+    <title>MeteoCommute V43 - Stable & Interactif</title>
     <style>
         :root {
             --bg-body: #050505;
@@ -48,10 +48,7 @@
         }
         
         .geo-btn.loading { animation: pulse 0.8s infinite; color: white; border-color: white; }
-        .geo-btn.locked-gps { 
-            background: rgba(239, 68, 68, 0.15); color: var(--danger); 
-            border-color: var(--danger); box-shadow: 0 0 12px rgba(239, 68, 68, 0.4); 
-        }
+        .geo-btn.locked-gps { background: rgba(239, 68, 68, 0.15); color: var(--danger); border-color: var(--danger); box-shadow: 0 0 12px rgba(239, 68, 68, 0.4); }
         
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
@@ -119,23 +116,13 @@
         .c-desc { font-size: 11px; color: var(--text-muted); opacity: 0.8; }
         .c-time { font-family: monospace; font-size: 12px; color: var(--accent); background: rgba(56, 189, 248, 0.1); padding: 2px 8px; border-radius: 5px; border: 1px solid var(--accent-glow); }
 
-        .week-strip { 
-            display: flex; gap: 5px; margin-top: 10px; height: 75px; 
-            border-top: 1px solid var(--glass-border); padding-top: 12px; 
-        }
-        .day-box { 
-            flex: 1; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            cursor: pointer; transition: 0.2s; border: 1px solid transparent;
-        }
-        .day-box:hover { background: rgba(255,255,255,0.05); }
+        .week-strip { display: flex; gap: 5px; margin-top: 10px; height: 75px; border-top: 1px solid var(--glass-border); padding-top: 12px; }
+        .day-box { flex: 1; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; border: 1px solid transparent; }
         .day-box.active { background: rgba(56, 189, 248, 0.12); border-color: rgba(56, 189, 248, 0.3); }
         .d-name { font-size: 9px; font-weight: 800; color: var(--text-muted); margin-bottom: 4px; }
         .d-temp { font-size: 12px; font-weight: 700; margin-top: 4px; }
 
-        .overlay {
-            position: absolute; inset: 0; background: rgba(10, 15, 30, 0.98); z-index: 100;
-            display: none; flex-direction: column; padding: 25px; border-radius: 24px;
-        }
+        .overlay { position: absolute; inset: 0; background: rgba(10, 15, 30, 0.98); z-index: 100; display: none; flex-direction: column; padding: 25px; border-radius: 24px; }
         .overlay.visible { display: flex; animation: fadeIn 0.2s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
         
@@ -146,7 +133,7 @@
         
         .cfg-row { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; padding: 12px; background: var(--glass-surf); border-radius: 10px; border: 1px solid var(--glass-border); }
         .btn-act { padding: 15px; background: var(--accent); color: #000; font-weight: 800; border: none; border-radius: 10px; cursor: pointer; margin-top: auto; }
-        .btn-icon { width: 32px; height: 32px; background: rgba(255,255,255,0.1); border-radius: 8px; display: grid; place-items: center; cursor: pointer; font-weight: bold; }
+        .btn-icon { width: 32px; height: 32px; background: rgba(255,255,255,0.1); border-radius: 8px; display: grid; place-items: center; cursor: pointer; font-weight: bold; user-select: none; }
     </style>
 </head>
 <body>
@@ -173,26 +160,19 @@
         </div>
     </div>
 
-    <div class="section-header">
-        <span>PLUIE (24H)</span>
-        <span id="lbl-sync" style="font-size:9px; opacity:0.6">--:--</span>
-    </div>
+    <div class="section-header">PLUIE (24H) <span id="lbl-sync" style="font-size:9px; opacity:0.6">--:--</span></div>
     <div class="timeline-container">
         <div id="timeline-box" class="timeline-box"></div>
-        <div class="time-labels">
-            <span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span>
-        </div>
+        <div class="time-labels"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>
     </div>
 
-    <div class="section-header">Radar Bruine & Pluie (15m/bloc)</div>
+    <div class="section-header">Radar Temps Réel (15m/bloc)</div>
     <div class="radar-strip" id="radar-container">
         <div class="radar-bit"></div><div class="radar-bit"></div><div class="radar-bit"></div><div class="radar-bit"></div>
     </div>
-    <div class="radar-labels">
-        <span>Maintenant</span><span>+1h</span>
-    </div>
+    <div class="radar-labels"><span>Maintenant</span><span>+1h</span></div>
 
-    <div class="section-header">TRAJETS</div>
+    <div class="section-header">TRAJETS (Configurer)</div>
     <div id="card-aller" class="commute-card">
         <div class="c-left">
             <span class="c-label">ALLER</span>
@@ -217,38 +197,31 @@
         <div class="section-header" style="color:var(--accent)">RECHERCHE VILLE</div>
         <input type="text" id="inp-city" class="inp-flat" placeholder="Ville...">
         <div id="lst-results" class="res-list"></div>
-        <button class="btn-act" style="background:transparent; color:white; border:1px solid #333;" onclick="ui.toggleSearch(false)">RETOUR</button>
+        <button class="btn-act" style="background:transparent; color:white; border:1px solid #333;" onclick="window.ui.toggleSearch(false)">RETOUR</button>
     </div>
 
     <div id="ov-config" class="overlay">
         <div class="section-header" style="color:var(--accent)">HORAIRES DE TRAJET</div>
         <div style="margin-top:15px; font-size:10px; font-weight:800; color:var(--text-muted)">MATIN</div>
-        <div class="cfg-row">
-            <span>Départ</span> <div style="display:flex; gap:10px;"><div class="btn-icon" onclick="app.adj('as',-1)">-</div><span id="v-as">08</span><div class="btn-icon" onclick="app.adj('as',1)">+</div></div>
-        </div>
-        <div class="cfg-row">
-            <span>Arrivée</span> <div style="display:flex; gap:10px;"><div class="btn-icon" onclick="app.adj('ae',-1)">-</div><span id="v-ae">09</span><div class="btn-icon" onclick="app.adj('ae',1)">+</div></div>
-        </div>
+        <div class="cfg-row"><span>Départ</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('as',-1)">-</div><span id="v-as">09</span><div class="btn-icon" onclick="window.app.adj('as',1)">+</div></div></div>
+        <div class="cfg-row"><span>Arrivée</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('ae',-1)">-</div><span id="v-ae">11</span><div class="btn-icon" onclick="window.app.adj('ae',1)">+</div></div></div>
         <div style="margin-top:15px; font-size:10px; font-weight:800; color:var(--text-muted)">SOIR</div>
-        <div class="cfg-row">
-            <span>Départ</span> <div style="display:flex; gap:10px;"><div class="btn-icon" onclick="app.adj('rs',-1)">-</div><span id="v-rs">17</span><div class="btn-icon" onclick="app.adj('rs',1)">+</div></div>
-        </div>
-        <div class="cfg-row">
-            <span>Arrivée</span> <div style="display:flex; gap:10px;"><div class="btn-icon" onclick="app.adj('re',-1)">-</div><span id="v-re">18</span><div class="btn-icon" onclick="app.adj('re',1)">+</div></div>
-        </div>
-        <button class="btn-act" onclick="ui.toggleConfig(false)">VALIDER</button>
+        <div class="cfg-row"><span>Départ</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('rs',-1)">-</div><span id="v-rs">17</span><div class="btn-icon" onclick="window.app.adj('rs',1)">+</div></div></div>
+        <div class="cfg-row"><span>Arrivée</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('re',-1)">-</div><span id="v-re">19</span><div class="btn-icon" onclick="window.app.adj('re',1)">+</div></div></div>
+        <button class="btn-act" onclick="window.ui.toggleConfig(false)">VALIDER</button>
     </div>
 </div>
 
 <script>
 {
+    // LOGIC HELPER
     const Logic = {
         analyzeChunk: (hourly, dayIdx, start, end) => {
             const offset = dayIdx * 24;
             let maxP = 0;
-            for(let h = start; h < end; h++) {
-                const idx = offset + h;
-                const p = (hourly.precipitation ? hourly.precipitation[idx] : 0) || (hourly.rain[idx] || 0) + (hourly.showers[idx] || 0);
+            for(let i = start; i < end; i++) {
+                const idx = offset + i;
+                const p = (hourly.precipitation ? hourly.precipitation[idx] : 0) || (hourly.rain ? (hourly.rain[idx] || 0) + (hourly.showers[idx] || 0) : 0);
                 maxP = Math.max(maxP, p);
             }
             if (maxP > 1.5) return { alert: "PLUIE FORTE", desc: "Prendre la voiture", color: "var(--danger)" };
@@ -262,71 +235,72 @@
         }
     };
 
-    const app = (() => {
+    // APP LOGIC - Attached to window for HTML access
+    window.app = (() => {
         const state = { config: { lat: 50.62, lon: 3.14, name: "...", as: 9, ae: 11, rs: 17, re: 19 }, weather: null, day: 0 };
         
         const render = () => {
             if(!state.weather) return;
-            const d = state.weather; const day = state.day; const nowH = new Date().getHours();
-            document.getElementById('btn-city').innerText = state.config.name;
-            document.getElementById('lbl-sync').innerText = "MAJ " + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-            document.getElementById('lbl-date').innerText = day === 0 ? "Aujourd'hui" : new Date(d.daily.time[day]).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'}).toUpperCase();
-            document.getElementById('lbl-temp').innerText = (day === 0 ? d.current.temperature_2m : d.daily.temperature_2m_max[day]).toFixed(1);
+            const d = state.weather; const now = new Date(); const h = now.getHours(); const m = now.getMinutes();
             
-            const wCode = d.daily.weather_code[day];
+            // Header
+            document.getElementById('btn-city').innerText = state.config.name;
+            document.getElementById('lbl-sync').innerText = "MAJ " + now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+            document.getElementById('lbl-date').innerText = state.day === 0 ? "Aujourd'hui" : new Date(d.daily.time[state.day]).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'}).toUpperCase();
+            document.getElementById('lbl-temp').innerText = (state.day === 0 ? d.current.temperature_2m : d.daily.temperature_2m_max[state.day]).toFixed(1);
+            
+            // Icon
+            const wCode = d.daily.weather_code[state.day];
             document.getElementById('hero-icon').innerHTML = wCode > 50 ? Logic.svg.rain('var(--accent)') : (wCode > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
             
-            const setDot = (id, s, e) => { 
-                const r = Logic.analyzeChunk(d.hourly, day, s, e); 
+            // Dots
+            ['dot-m','dot-mi','dot-s'].forEach((id, i) => {
+                const range = [[0,11],[11,15],[15,23]][i];
+                const r = Logic.analyzeChunk(d.hourly, state.day, range[0], range[1]);
                 const dot = document.getElementById(id);
-                dot.style.background = r.color; 
-                dot.style.boxShadow = `0 0 8px ${r.color}`; 
-            };
-            setDot('dot-m', 0, 11);
-            setDot('dot-mi', 11, 15);
-            setDot('dot-s', 15, 23);
+                dot.style.background = r.color; dot.style.boxShadow = `0 0 8px ${r.color}`;
+            });
 
+            // Timeline
             const tl = document.getElementById('timeline-box'); tl.innerHTML = '';
-            for(let h=0; h<24; h++) {
-                const r = (d.hourly.precipitation ? d.hourly.precipitation[day*24+h] : 0) || (d.hourly.rain[day*24+h] || 0) + (d.hourly.showers[day*24+h] || 0);
+            for(let i=0; i<24; i++) {
+                const r = (d.hourly.precipitation ? d.hourly.precipitation[state.day*24+i] : 0);
                 const bar = document.createElement('div'); bar.className = 'time-bar';
                 let hp = Math.min(100, Math.max(10, r * 35)); if(r===0) hp=8;
                 bar.style.height = hp + '%';
                 if(r > 1.5) bar.classList.add('rain-heavy'); else if(r > 0.01) bar.classList.add('rain-light');
-                if(day === 0 && h === nowH) bar.classList.add('current');
+                if(state.day === 0 && i === h) bar.classList.add('current');
                 tl.appendChild(bar);
             }
 
-            const radarBits = document.querySelectorAll('.radar-bit');
-            radarBits.forEach((bit, i) => {
-                let isRaining = false;
-                if(day === 0) {
-                    if (d.minutely_15) {
-                        isRaining = d.minutely_15.precipitation[i] > 0.01;
-                    } else {
-                        const rainNow = (d.hourly.precipitation ? d.hourly.precipitation[nowH] : 0) || (d.hourly.rain[nowH] || 0);
-                        const rainNext = (d.hourly.precipitation ? d.hourly.precipitation[nowH+1] : 0) || (d.hourly.rain[nowH+1] || 0);
-                        isRaining = (i < 2 ? rainNow : rainNext) > 0.01;
-                    }
+            // Radar Fix: Dynamic Indexing
+            const startIndex = (h * 4) + Math.floor(m / 15);
+            document.querySelectorAll('.radar-bit').forEach((bit, i) => {
+                let active = false;
+                if(state.day === 0 && d.minutely_15) {
+                    active = (d.minutely_15.precipitation[startIndex + i] || 0) > 0.01;
                 }
-                bit.classList.toggle('active', isRaining);
+                bit.classList.toggle('active', active);
             });
             
-            const upCard = (id, s, e, t) => {
-                const res = Logic.analyzeChunk(d.hourly, day, s, e);
+            // Cards Update
+            const upCard = (id, s, e) => {
+                const res = Logic.analyzeChunk(d.hourly, state.day, s, e);
                 document.getElementById(`card-${id}`).style.borderLeftColor = res.color;
                 document.getElementById(`alert-${id}`).innerText = res.alert;
                 document.getElementById(`alert-${id}`).style.color = res.color;
                 document.getElementById(`desc-${id}`).innerText = res.desc;
-                document.getElementById(`t-${id}`).innerText = t;
+                document.getElementById(`t-${id}`).innerText = `${s}h-${e}h`;
             };
-            upCard('aller', state.config.as, state.config.ae, `${state.config.as}h-${state.config.ae}h`);
-            upCard('retour', state.config.rs, state.config.re, `${state.config.rs}h-${state.config.re}h`);
+            upCard('aller', state.config.as, state.config.ae);
+            upCard('retour', state.config.rs, state.config.re);
 
+            // Week Strip
             const strip = document.getElementById('week-strip'); strip.innerHTML = '';
             for(let i=0; i<5; i++) {
-                const box = document.createElement('div'); box.className = `day-box ${i === day ? 'active' : ''}`;
-                const dt = new Date(d.daily.time[i]); const wc = d.daily.weather_code[i];
+                const box = document.createElement('div'); box.className = `day-box ${i === state.day ? 'active' : ''}`;
+                const dt = new Date(d.daily.time[i]);
+                const wc = d.daily.weather_code[i];
                 const ico = wc > 50 ? Logic.svg.rain('var(--accent)') : (wc > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
                 box.innerHTML = `<div class="d-name">${dt.toLocaleDateString('fr-FR',{weekday:'short'}).toUpperCase().slice(0,3)}</div><div style="width:20px">${ico}</div><div class="d-temp">${d.daily.temperature_2m_max[i].toFixed(0)}°</div>`;
                 box.onclick = () => { state.day = i; render(); };
@@ -336,9 +310,10 @@
 
         const fetchW = async () => {
             try {
-                const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${state.config.lat}&longitude=${state.config.lon}&current=temperature_2m,rain,showers&daily=weather_code,temperature_2m_max&hourly=rain,showers,precipitation&minutely_15=precipitation&timezone=Europe/Paris&forecast_days=5`);
+                // Ensure timezone=auto for index sync
+                const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${state.config.lat}&longitude=${state.config.lon}&current=temperature_2m&daily=weather_code,temperature_2m_max&hourly=precipitation,rain,showers&minutely_15=precipitation&timezone=auto&forecast_days=5`);
                 state.weather = await r.json(); render();
-            } catch(e) { console.error(e); }
+            } catch(e) { console.error("Weather Error", e); }
         };
 
         const useGeo = async () => {
@@ -356,6 +331,7 @@
                 state.config.name = (data.address.city || data.address.town || data.address.village || "MA POSITION").toUpperCase();
                 btn.className = 'geo-btn locked-gps';
             } catch (e) {
+                // IP Fallback
                 try {
                     const r = await fetch('https://ipapi.co/json/');
                     const d = await r.json();
@@ -375,37 +351,48 @@
         }};
     })();
 
-    const ui = {
+    // UI CONTROLLER - Attached to window
+    window.ui = {
         toggleSearch: s => { 
             document.getElementById('ov-search').classList.toggle('visible', s); 
             if(s) document.getElementById('inp-city').focus(); 
         },
         toggleConfig: s => { 
-            if(s) ['as','ae','rs','re'].forEach(k => document.getElementById(`v-${k}`).innerText = app.state.config[k].toString().padStart(2,'0')); 
-            else app.render(); 
+            if(s) ['as','ae','rs','re'].forEach(k => document.getElementById(`v-${k}`).innerText = window.app.state.config[k].toString().padStart(2,'0')); 
+            else window.app.render(); 
             document.getElementById('ov-config').classList.toggle('visible', s); 
         },
         search: async q => {
             if(q.length < 3) return;
-            const d = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr&format=json`)).json();
-            const l = document.getElementById('lst-results'); l.innerHTML = '';
-            (d.results||[]).forEach(c => {
-                const r = document.createElement('div'); r.className='res-row'; r.innerHTML=`<b>${c.name}</b> <small style="opacity:0.5">${c.admin1||''}</small>`;
-                r.onclick=()=>{ app.state.config={...app.state.config, lat:c.latitude, lon:c.longitude, name:c.name.toUpperCase()}; app.fetch(); ui.toggleSearch(false); };
-                l.appendChild(r);
-            });
+            try {
+                const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr&format=json`);
+                const d = await r.json();
+                const l = document.getElementById('lst-results'); l.innerHTML = '';
+                (d.results||[]).forEach(c => {
+                    const div = document.createElement('div'); div.className='res-row'; 
+                    div.innerHTML=`<b>${c.name}</b> <small style="opacity:0.5">${c.admin1||''}</small>`;
+                    div.onclick=()=>{ 
+                        window.app.state.config={...window.app.state.config, lat:c.latitude, lon:c.longitude, name:c.name.toUpperCase()}; 
+                        window.app.fetch(); 
+                        window.ui.toggleSearch(false); 
+                    };
+                    l.appendChild(div);
+                });
+            } catch(e) {}
         }
     };
 
+    // EVENTS
     let st;
-    // CORRECTION DES EVENT LISTENERS
-    document.getElementById('city-trigger').onclick = () => ui.toggleSearch(true);
-    document.getElementById('btn-geo').onclick = (e) => { e.stopPropagation(); app.useGeo(); };
+    document.getElementById('city-trigger').onclick = () => window.ui.toggleSearch(true);
+    document.getElementById('btn-geo').onclick = (e) => { e.stopPropagation(); window.app.useGeo(); };
+    document.getElementById('inp-city').oninput = e => { clearTimeout(st); st = setTimeout(() => window.ui.search(e.target.value), 400); };
     
-    document.getElementById('inp-city').oninput = e => { clearTimeout(st); st = setTimeout(() => ui.search(e.target.value), 400); };
-    document.querySelectorAll('.commute-card').forEach(c => c.onclick = () => ui.toggleConfig(true));
+    // Explicit Card Click Binding
+    document.getElementById('card-aller').onclick = () => window.ui.toggleConfig(true);
+    document.getElementById('card-retour').onclick = () => window.ui.toggleConfig(true);
 
-    window.onload = () => app.useGeo();
+    window.onload = () => window.app.useGeo();
 }
 </script>
 </body>
