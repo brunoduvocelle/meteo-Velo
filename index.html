@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeteoCommute V34 - Calibration Horaires</title>
+    <title>MeteoCommute V36 - Haute Sensibilité</title>
     <style>
         :root {
             --bg-body: #050505;
@@ -100,9 +100,10 @@
         .time-bar.rain-heavy { background: var(--rain-heavy-ui); }
         .time-bar.current { background: #fff; box-shadow: 0 0 8px #fff; z-index: 2; }
 
-        .radar-strip { display: flex; gap: 4px; height: 5px; margin-bottom: 12px; }
-        .radar-bit { flex: 1; background: rgba(255,255,255,0.1); border-radius: 2px; }
-        .radar-bit.active { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+        .radar-strip { display: flex; gap: 4px; height: 6px; margin-bottom: 12px; }
+        .radar-bit { flex: 1; background: rgba(255,255,255,0.05); border-radius: 2px; transition: 0.3s; }
+        .radar-bit.active { background: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+        .radar-labels { display: flex; justify-content: space-between; font-size: 7px; color: var(--text-muted); margin-top: -8px; margin-bottom: 10px; padding: 0 2px; }
 
         .commute-card {
             background: linear-gradient(145deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
@@ -183,9 +184,12 @@
         </div>
     </div>
 
-    <div class="section-header">Pluie dans l'heure</div>
-    <div class="radar-strip">
+    <div class="section-header">Radar Bruine & Pluie (15m/bloc)</div>
+    <div class="radar-strip" id="radar-container">
         <div class="radar-bit"></div><div class="radar-bit"></div><div class="radar-bit"></div><div class="radar-bit"></div>
+    </div>
+    <div class="radar-labels">
+        <span>Maintenant</span><span>+1h</span>
     </div>
 
     <div class="section-header">TRAJETS</div>
@@ -237,149 +241,167 @@
 </div>
 
 <script>
-const Logic = {
-    analyzeChunk: (hourly, dayIdx, start, end) => {
-        const offset = dayIdx * 24;
-        let maxRain = 0;
-        for(let h = start; h < end; h++) {
-            const idx = offset + h;
-            if(hourly.rain[idx] !== undefined) maxRain = Math.max(maxRain, hourly.rain[idx] + hourly.showers[idx]);
-        }
-        if (maxRain > 1.5) return { alert: "PLUIE FORTE", desc: "Prendre la voiture", color: "var(--danger)" };
-        if (maxRain > 0.1) return { alert: "RISQUE PLUIE", desc: "Prendre un K-Way", color: "var(--warn)" };
-        return { alert: "VOIE LIBRE", desc: "Trajet sec", color: "var(--ok)" };
-    },
-    svg: {
-        sun: c=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><g><path d="M12 1v2m0 18v2M4.22 4.22l1.4 1.4M18.36 18.36l1.4 1.4M1 12h2m18 0h2M4.22 19.78l1.4-1.4M18.36 5.64l1.4-1.4"/><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="12s" repeatCount="indefinite"/></g></svg>`,
-        cloud: c=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"><animate attributeName="d" values="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z;M18 11h-1.26A8 8 0 1 0 9 21h9a5 5 0 0 0 0-10z;M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" dur="5s" repeatCount="indefinite"/></path></svg>`,
-        rain: c=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/><path d="M8 13v8"><animate attributeName="d" values="M8 13v8;M8 15v8;M8 13v8" dur="1s" repeatCount="indefinite"/></path><path d="M16 13v8"><animate attributeName="d" values="M16 13v8;M16 15v8;M16 13v8" dur="1.2s" repeatCount="indefinite"/></path></svg>`
-    }
-};
-
-const app = (() => {
-    localStorage.clear(); 
-    const state = { config: { lat: 50.62, lon: 3.14, name: "...", as: 9, ae: 11, rs: 17, re: 19 }, weather: null, day: 0 };
-    
-    const render = () => {
-        if(!state.weather) return;
-        const d = state.weather; const day = state.day; const nowH = new Date().getHours();
-        document.getElementById('btn-city').innerText = state.config.name;
-        document.getElementById('lbl-sync').innerText = "MAJ " + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-        document.getElementById('lbl-date').innerText = day === 0 ? "Aujourd'hui" : new Date(d.daily.time[day]).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'}).toUpperCase();
-        document.getElementById('lbl-temp').innerText = (day === 0 ? d.current.temperature_2m : d.daily.temperature_2m_max[day]).toFixed(1);
-        
-        const wCode = d.daily.weather_code[day];
-        document.getElementById('hero-icon').innerHTML = wCode > 50 ? Logic.svg.rain('var(--accent)') : (wCode > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
-        
-        // CALIBRATION DES TREND DOTS (Sync avec vos nouveaux créneaux)
-        const setDot = (id, s, e) => { 
-            const r = Logic.analyzeChunk(d.hourly, day, s, e); 
-            const dot = document.getElementById(id);
-            dot.style.background = r.color; 
-            dot.style.boxShadow = `0 0 8px ${r.color}`; 
-        };
-        setDot('dot-m', 0, 11);  // Matin : 00h - 11h
-        setDot('dot-mi', 11, 15); // Midi : 11h - 15h
-        setDot('dot-s', 15, 23);  // Soir : 15h - 23h
-
-        const tl = document.getElementById('timeline-box'); tl.innerHTML = '';
-        for(let h=0; h<24; h++) {
-            const r = d.hourly.rain[day*24+h] + d.hourly.showers[day*24+h];
-            const bar = document.createElement('div'); bar.className = 'time-bar';
-            let hp = Math.min(100, Math.max(10, r * 35)); if(r===0) hp=8;
-            bar.style.height = hp + '%';
-            if(r > 1.5) bar.classList.add('rain-heavy'); else if(r > 0.1) bar.classList.add('rain-light');
-            if(day === 0 && h === nowH) bar.classList.add('current');
-            tl.appendChild(bar);
-        }
-
-        document.querySelectorAll('.radar-bit').forEach(s => s.classList.toggle('active', (d.current.rain + d.current.showers) > 0.1 && day === 0));
-        
-        const upCard = (id, s, e, t) => {
-            const res = Logic.analyzeChunk(d.hourly, day, s, e);
-            document.getElementById(`card-${id}`).style.borderLeftColor = res.color;
-            document.getElementById(`alert-${id}`).innerText = res.alert;
-            document.getElementById(`alert-${id}`).style.color = res.color;
-            document.getElementById(`desc-${id}`).innerText = res.desc;
-            document.getElementById(`t-${id}`).innerText = t;
-        };
-        upCard('aller', state.config.as, state.config.ae, `${state.config.as}h-${state.config.ae}h`);
-        upCard('retour', state.config.rs, state.config.re, `${state.config.rs}h-${state.config.re}h`);
-
-        const strip = document.getElementById('week-strip'); strip.innerHTML = '';
-        for(let i=0; i<5; i++) {
-            const box = document.createElement('div'); box.className = `day-box ${i === day ? 'active' : ''}`;
-            const dt = new Date(d.daily.time[i]); const wc = d.daily.weather_code[i];
-            const ico = wc > 50 ? Logic.svg.rain('var(--accent)') : (wc > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
-            box.innerHTML = `<div class="d-name">${dt.toLocaleDateString('fr-FR',{weekday:'short'}).toUpperCase().slice(0,3)}</div><div style="width:20px">${ico}</div><div class="d-temp">${d.daily.temperature_2m_max[i].toFixed(0)}°</div>`;
-            box.onclick = () => { state.day = i; render(); };
-            strip.appendChild(box);
-        }
-    };
-
-    const fetchW = async () => {
-        try {
-            const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${state.config.lat}&longitude=${state.config.lon}&current=temperature_2m,rain,showers&daily=weather_code,temperature_2m_max&hourly=rain,showers&timezone=Europe/Paris&forecast_days=5`);
-            state.weather = await r.json(); render();
-        } catch(e) { console.error(e); }
-    };
-
-    const useGeo = async () => {
-        const btn = document.getElementById('btn-geo');
-        btn.className = 'geo-btn loading';
-        document.getElementById('btn-city').innerText = "RECHERCHE...";
-
-        try {
-            const pos = await new Promise((res, rej) => {
-                navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, enableHighAccuracy: true });
-            });
-            const { latitude: lat, longitude: lon } = pos.coords;
-            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=12`);
-            const data = await res.json();
-            state.config.lat = lat; state.config.lon = lon;
-            state.config.name = (data.address.city || data.address.town || data.address.village || "MA POSITION").toUpperCase();
-            btn.className = 'geo-btn locked-gps';
-        } catch (e) {
-            try {
-                const r = await fetch('https://ipapi.co/json/');
-                const d = await r.json();
-                state.config.lat = d.latitude; state.config.lon = d.longitude;
-                state.config.name = d.city.toUpperCase();
-                btn.className = 'geo-btn';
-            } catch (err) {
-                state.config.name = "LILLE (DÉFAUT)"; fetchW();
+{
+    const Logic = {
+        analyzeChunk: (hourly, dayIdx, start, end) => {
+            const offset = dayIdx * 24;
+            let maxP = 0;
+            for(let h = start; h < end; h++) {
+                const idx = offset + h;
+                const p = (hourly.precipitation ? hourly.precipitation[idx] : 0) || (hourly.rain[idx] || 0) + (hourly.showers[idx] || 0);
+                maxP = Math.max(maxP, p);
             }
+            if (maxP > 1.5) return { alert: "PLUIE FORTE", desc: "Prendre la voiture", color: "var(--danger)" };
+            if (maxP > 0.01) return { alert: "RISQUE PLUIE", desc: "Prendre un K-Way", color: "var(--warn)" };
+            return { alert: "VOIE LIBRE", desc: "Trajet sec", color: "var(--ok)" };
+        },
+        svg: {
+            sun: c=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><g><path d="M12 1v2m0 18v2M4.22 4.22l1.4 1.4M18.36 18.36l1.4 1.4M1 12h2m18 0h2M4.22 19.78l1.4-1.4M18.36 5.64l1.4-1.4"/><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="12s" repeatCount="indefinite"/></g></svg>`,
+            cloud: c=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"><animate attributeName="d" values="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z;M18 11h-1.26A8 8 0 1 0 9 21h9a5 5 0 0 0 0-10z;M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" dur="5s" repeatCount="indefinite"/></path></svg>`,
+            rain: c=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/><path d="M8 13v8"><animate attributeName="d" values="M8 13v8;M8 15v8;M8 13v8" dur="1s" repeatCount="indefinite"/></path><path d="M16 13v8"><animate attributeName="d" values="M16 13v8;M16 15v8;M16 13v8" dur="1.2s" repeatCount="indefinite"/></path></svg>`
         }
-        fetchW();
     };
 
-    return { fetch: fetchW, useGeo, state, render, adj: (k,v) => {
-        let n = state.config[k]+v; if(n>23)n=0; if(n<0)n=23; state.config[k]=n;
-        document.getElementById(`v-${k}`).innerText = n.toString().padStart(2,'0');
-    }};
-})();
+    const app = (() => {
+        const state = { config: { lat: 50.62, lon: 3.14, name: "...", as: 9, ae: 11, rs: 17, re: 19 }, weather: null, day: 0 };
+        
+        const render = () => {
+            if(!state.weather) return;
+            const d = state.weather; const day = state.day; const nowH = new Date().getHours();
+            document.getElementById('btn-city').innerText = state.config.name;
+            document.getElementById('lbl-sync').innerText = "MAJ " + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+            document.getElementById('lbl-date').innerText = day === 0 ? "Aujourd'hui" : new Date(d.daily.time[day]).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'}).toUpperCase();
+            document.getElementById('lbl-temp').innerText = (day === 0 ? d.current.temperature_2m : d.daily.temperature_2m_max[day]).toFixed(1);
+            
+            const wCode = d.daily.weather_code[day];
+            document.getElementById('hero-icon').innerHTML = wCode > 50 ? Logic.svg.rain('var(--accent)') : (wCode > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
+            
+            // DOTS
+            const setDot = (id, s, e) => { 
+                const r = Logic.analyzeChunk(d.hourly, day, s, e); 
+                const dot = document.getElementById(id);
+                dot.style.background = r.color; 
+                dot.style.boxShadow = `0 0 8px ${r.color}`; 
+            };
+            setDot('dot-m', 0, 11);
+            setDot('dot-mi', 11, 15);
+            setDot('dot-s', 15, 23);
 
-const ui = {
-    toggleSearch: s => { document.getElementById('ov-search').classList.toggle('visible', s); if(s) document.getElementById('inp-city').focus(); },
-    toggleConfig: s => { if(s) ['as','ae','rs','re'].forEach(k => document.getElementById(`v-${k}`).innerText = app.state.config[k].toString().padStart(2,'0')); else app.render(); document.getElementById('ov-config').classList.toggle('visible', s); },
-    search: async q => {
-        if(q.length < 3) return;
-        const d = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr&format=json`)).json();
-        const l = document.getElementById('lst-results'); l.innerHTML = '';
-        (d.results||[]).forEach(c => {
-            const r = document.createElement('div'); r.className='res-row'; r.innerHTML=`<b>${c.name}</b> <small style="opacity:0.5">${c.admin1||''}</small>`;
-            r.onclick=()=>{ app.state.config={...app.state.config, lat:c.latitude, lon:c.longitude, name:c.name.toUpperCase()}; app.fetch(); ui.toggleSearch(false); };
-            l.appendChild(r);
-        });
-    }
-};
+            // TIMELINE
+            const tl = document.getElementById('timeline-box'); tl.innerHTML = '';
+            for(let h=0; h<24; h++) {
+                const r = (d.hourly.precipitation ? d.hourly.precipitation[day*24+h] : 0) || (d.hourly.rain[day*24+h] || 0) + (d.hourly.showers[day*24+h] || 0);
+                const bar = document.createElement('div'); bar.className = 'time-bar';
+                let hp = Math.min(100, Math.max(10, r * 35)); if(r===0) hp=8;
+                bar.style.height = hp + '%';
+                if(r > 1.5) bar.classList.add('rain-heavy'); else if(r > 0.01) bar.classList.add('rain-light');
+                if(day === 0 && h === nowH) bar.classList.add('current');
+                tl.appendChild(bar);
+            }
 
-let st;
-document.getElementById('btn-geo').onclick = (e) => { e.stopPropagation(); app.useGeo(); };
-document.getElementById('inp-city').oninput = e => { clearTimeout(st); st = setTimeout(() => ui.search(e.target.value), 400); };
-document.querySelectorAll('.commute-card').forEach(c => c.onclick = () => ui.toggleConfig(true));
+            // RADAR HAUTE SENSIBILITÉ (Seuil 0.01mm)
+            const radarBits = document.querySelectorAll('.radar-bit');
+            radarBits.forEach((bit, i) => {
+                let isRaining = false;
+                if(day === 0) {
+                    if (d.minutely_15) {
+                        isRaining = d.minutely_15.precipitation[i] > 0.01;
+                    } else {
+                        const rainNow = (d.hourly.precipitation ? d.hourly.precipitation[nowH] : 0) || (d.hourly.rain[nowH] || 0);
+                        const rainNext = (d.hourly.precipitation ? d.hourly.precipitation[nowH+1] : 0) || (d.hourly.rain[nowH+1] || 0);
+                        isRaining = (i < 2 ? rainNow : rainNext) > 0.01;
+                    }
+                }
+                bit.classList.toggle('active', isRaining);
+            });
+            
+            // CARDS
+            const upCard = (id, s, e, t) => {
+                const res = Logic.analyzeChunk(d.hourly, day, s, e);
+                document.getElementById(`card-${id}`).style.borderLeftColor = res.color;
+                document.getElementById(`alert-${id}`).innerText = res.alert;
+                document.getElementById(`alert-${id}`).style.color = res.color;
+                document.getElementById(`desc-${id}`).innerText = res.desc;
+                document.getElementById(`t-${id}`).innerText = t;
+            };
+            upCard('aller', state.config.as, state.config.ae, `${state.config.as}h-${state.config.ae}h`);
+            upCard('retour', state.config.rs, state.config.re, `${state.config.rs}h-${state.config.re}h`);
 
-window.onload = () => app.useGeo();
+            // STRIP
+            const strip = document.getElementById('week-strip'); strip.innerHTML = '';
+            for(let i=0; i<5; i++) {
+                const box = document.createElement('div'); box.className = `day-box ${i === day ? 'active' : ''}`;
+                const dt = new Date(d.daily.time[i]); const wc = d.daily.weather_code[i];
+                const ico = wc > 50 ? Logic.svg.rain('var(--accent)') : (wc > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
+                box.innerHTML = `<div class="d-name">${dt.toLocaleDateString('fr-FR',{weekday:'short'}).toUpperCase().slice(0,3)}</div><div style="width:20px">${ico}</div><div class="d-temp">${d.daily.temperature_2m_max[i].toFixed(0)}°</div>`;
+                box.onclick = () => { state.day = i; render(); };
+                strip.appendChild(box);
+            }
+        };
+
+        const fetchW = async () => {
+            try {
+                const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${state.config.lat}&longitude=${state.config.lon}&current=temperature_2m,rain,showers&daily=weather_code,temperature_2m_max&hourly=rain,showers,precipitation&minutely_15=precipitation&timezone=Europe/Paris&forecast_days=5`);
+                state.weather = await r.json(); render();
+            } catch(e) { console.error(e); }
+        };
+
+        const useGeo = async () => {
+            const btn = document.getElementById('btn-geo');
+            btn.className = 'geo-btn loading';
+            document.getElementById('btn-city').innerText = "RECHERCHE...";
+            try {
+                const pos = await new Promise((res, rej) => {
+                    navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, enableHighAccuracy: true });
+                });
+                const { latitude: lat, longitude: lon } = pos.coords;
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=12`);
+                const data = await res.json();
+                state.config.lat = lat; state.config.lon = lon;
+                state.config.name = (data.address.city || data.address.town || data.address.village || "MA POSITION").toUpperCase();
+                btn.className = 'geo-btn locked-gps';
+            } catch (e) {
+                try {
+                    const r = await fetch('https://ipapi.co/json/');
+                    const d = await r.json();
+                    state.config.lat = d.latitude; state.config.lon = d.longitude;
+                    state.config.name = d.city.toUpperCase();
+                    btn.className = 'geo-btn';
+                } catch (err) {
+                    state.config.name = "LILLE (DÉFAUT)";
+                }
+            }
+            fetchW();
+        };
+
+        return { fetch: fetchW, useGeo, state, render, adj: (k,v) => {
+            let n = state.config[k]+v; if(n>23)n=0; if(n<0)n=23; state.config[k]=n;
+            document.getElementById(`v-${k}`).innerText = n.toString().padStart(2,'0');
+        }};
+    })();
+
+    const ui = {
+        toggleSearch: s => { document.getElementById('ov-search').classList.toggle('visible', s); if(s) document.getElementById('inp-city').focus(); },
+        toggleConfig: s => { if(s) ['as','ae','rs','re'].forEach(k => document.getElementById(`v-${k}`).innerText = app.state.config[k].toString().padStart(2,'0')); else app.render(); document.getElementById('ov-config').classList.toggle('visible', s); },
+        search: async q => {
+            if(q.length < 3) return;
+            const d = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr&format=json`)).json();
+            const l = document.getElementById('lst-results'); l.innerHTML = '';
+            (d.results||[]).forEach(c => {
+                const r = document.createElement('div'); r.className='res-row'; r.innerHTML=`<b>${c.name}</b> <small style="opacity:0.5">${c.admin1||''}</small>`;
+                r.onclick=()=>{ app.state.config={...app.state.config, lat:c.latitude, lon:c.longitude, name:c.name.toUpperCase()}; app.fetch(); ui.toggleSearch(false); };
+                l.appendChild(r);
+            });
+        }
+    };
+
+    let st;
+    document.getElementById('btn-geo').onclick = (e) => { e.stopPropagation(); app.useGeo(); };
+    document.getElementById('inp-city').oninput = e => { clearTimeout(st); st = setTimeout(() => ui.search(e.target.value), 400); };
+    document.querySelectorAll('.commute-card').forEach(c => c.onclick = () => ui.toggleConfig(true));
+
+    window.onload = () => app.useGeo();
+}
 </script>
 </body>
 </html>
