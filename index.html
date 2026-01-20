@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeteoCommute V30 - Smart Location (GitHub Optimized)</title>
+    <title>MeteoCommute V34 - Calibration Horaires</title>
     <style>
         :root {
             --bg-body: #050505;
@@ -13,7 +13,7 @@
             --text-muted: #94a3b8;
             --accent: #38bdf8;
             --accent-glow: rgba(56, 189, 248, 0.3);
-            --rain-heavy: #c084fc;
+            --rain-heavy-ui: #c084fc; 
             --ok: #4ade80; --warn: #facc15; --danger: #f87171;
             --font-stack: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
@@ -36,7 +36,6 @@
             position: relative;
         }
 
-        /* HEADER */
         .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .city-group { display: flex; align-items: center; gap: 8px; cursor: pointer; max-width: 70%; }
         .city-btn { font-size: 14px; font-weight: 700; color: var(--text-main); letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -48,7 +47,6 @@
             transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         
-        /* États du Pin GPS */
         .geo-btn.loading { animation: pulse 0.8s infinite; color: white; border-color: white; }
         .geo-btn.locked-gps { 
             background: rgba(239, 68, 68, 0.15); color: var(--danger); 
@@ -74,7 +72,7 @@
             width: 95px; justify-content: space-between;
         }
         .trend-lbl { font-size: 9px; font-weight: 800; color: var(--text-muted); }
-        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #333; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #333; transition: 0.3s; }
 
         .section-header { 
             display: flex; justify-content: space-between; align-items: center;
@@ -82,17 +80,24 @@
             text-transform: uppercase; letter-spacing: 1.2px; 
         }
 
+        .timeline-container { margin-bottom: 10px; }
         .timeline-box {
             display: flex; align-items: flex-end; justify-content: space-between;
-            height: 45px; background: rgba(0,0,0,0.3); border-radius: 8px; 
-            padding: 0 5px; margin-bottom: 10px; position: relative;
+            height: 45px; background: rgba(0,0,0,0.3); border-radius: 8px 8px 0 0; 
+            padding: 0 5px; position: relative;
+        }
+        .time-labels {
+            display: flex; justify-content: space-between;
+            padding: 2px 5px; background: rgba(0,0,0,0.2);
+            border-radius: 0 0 8px 8px; font-size: 8px; color: var(--text-muted);
+            font-weight: 600; font-family: monospace;
         }
         .time-bar {
             flex: 1; margin: 0 1px; background: rgba(255,255,255,0.05); border-radius: 1px;
             height: 4px; min-height: 4px; transition: height 0.3s; position: relative;
         }
         .time-bar.rain-light { background: var(--accent); box-shadow: 0 0 5px var(--accent-glow); }
-        .time-bar.rain-heavy { background: var(--rain-heavy); }
+        .time-bar.rain-heavy { background: var(--rain-heavy-ui); }
         .time-bar.current { background: #fff; box-shadow: 0 0 8px #fff; z-index: 2; }
 
         .radar-strip { display: flex; gap: 4px; height: 5px; margin-bottom: 12px; }
@@ -171,9 +176,14 @@
         <span>PLUIE (24H)</span>
         <span id="lbl-sync" style="font-size:9px; opacity:0.6">--:--</span>
     </div>
-    <div id="timeline-box" class="timeline-box"></div>
+    <div class="timeline-container">
+        <div id="timeline-box" class="timeline-box"></div>
+        <div class="time-labels">
+            <span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span>
+        </div>
+    </div>
 
-    <div class="section-header">RADAR 1H</div>
+    <div class="section-header">RADAR dans l'heure</div>
     <div class="radar-strip">
         <div class="radar-bit"></div><div class="radar-bit"></div><div class="radar-bit"></div><div class="radar-bit"></div>
     </div>
@@ -247,8 +257,8 @@ const Logic = {
 };
 
 const app = (() => {
-    localStorage.clear(); // Garantit la fraîcheur
-    const state = { config: { lat: 50.62, lon: 3.14, name: "...", as: 8, ae: 9, rs: 17, re: 18 }, weather: null, day: 0 };
+    localStorage.clear(); 
+    const state = { config: { lat: 50.62, lon: 3.14, name: "...", as: 9, ae: 11, rs: 17, re: 19 }, weather: null, day: 0 };
     
     const render = () => {
         if(!state.weather) return;
@@ -257,10 +267,21 @@ const app = (() => {
         document.getElementById('lbl-sync').innerText = "MAJ " + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
         document.getElementById('lbl-date').innerText = day === 0 ? "Aujourd'hui" : new Date(d.daily.time[day]).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'}).toUpperCase();
         document.getElementById('lbl-temp').innerText = (day === 0 ? d.current.temperature_2m : d.daily.temperature_2m_max[day]).toFixed(1);
+        
         const wCode = d.daily.weather_code[day];
         document.getElementById('hero-icon').innerHTML = wCode > 50 ? Logic.svg.rain('var(--accent)') : (wCode > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
-        const setDot = (id, s, e) => { const r = Logic.analyzeChunk(d.hourly, day, s, e); document.getElementById(id).style.background = r.color; document.getElementById(id).style.boxShadow = `0 0 6px ${r.color}`; };
-        setDot('dot-m', 8, 10); setDot('dot-mi', 12, 14); setDot('dot-s', 17, 19);
+        
+        // CALIBRATION DES TREND DOTS (Sync avec vos nouveaux créneaux)
+        const setDot = (id, s, e) => { 
+            const r = Logic.analyzeChunk(d.hourly, day, s, e); 
+            const dot = document.getElementById(id);
+            dot.style.background = r.color; 
+            dot.style.boxShadow = `0 0 8px ${r.color}`; 
+        };
+        setDot('dot-m', 0, 11);  // Matin : 00h - 11h
+        setDot('dot-mi', 11, 15); // Midi : 11h - 15h
+        setDot('dot-s', 15, 23);  // Soir : 15h - 23h
+
         const tl = document.getElementById('timeline-box'); tl.innerHTML = '';
         for(let h=0; h<24; h++) {
             const r = d.hourly.rain[day*24+h] + d.hourly.showers[day*24+h];
@@ -271,7 +292,9 @@ const app = (() => {
             if(day === 0 && h === nowH) bar.classList.add('current');
             tl.appendChild(bar);
         }
+
         document.querySelectorAll('.radar-bit').forEach(s => s.classList.toggle('active', (d.current.rain + d.current.showers) > 0.1 && day === 0));
+        
         const upCard = (id, s, e, t) => {
             const res = Logic.analyzeChunk(d.hourly, day, s, e);
             document.getElementById(`card-${id}`).style.borderLeftColor = res.color;
@@ -282,6 +305,7 @@ const app = (() => {
         };
         upCard('aller', state.config.as, state.config.ae, `${state.config.as}h-${state.config.ae}h`);
         upCard('retour', state.config.rs, state.config.re, `${state.config.rs}h-${state.config.re}h`);
+
         const strip = document.getElementById('week-strip'); strip.innerHTML = '';
         for(let i=0; i<5; i++) {
             const box = document.createElement('div'); box.className = `day-box ${i === day ? 'active' : ''}`;
@@ -306,7 +330,6 @@ const app = (() => {
         document.getElementById('btn-city').innerText = "RECHERCHE...";
 
         try {
-            // Tentative GPS
             const pos = await new Promise((res, rej) => {
                 navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, enableHighAccuracy: true });
             });
@@ -317,7 +340,6 @@ const app = (() => {
             state.config.name = (data.address.city || data.address.town || data.address.village || "MA POSITION").toUpperCase();
             btn.className = 'geo-btn locked-gps';
         } catch (e) {
-            // Fallback IP (Indispensable pour Android)
             try {
                 const r = await fetch('https://ipapi.co/json/');
                 const d = await r.json();
