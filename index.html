@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeteoCommute V36 - Haute Sensibilité</title>
+    <title>MeteoCommute V37 - Correction Recherche</title>
     <style>
         :root {
             --bg-body: #050505;
@@ -153,7 +153,7 @@
 
 <div class="app-window">
     <div class="header-row">
-        <div class="city-group" onclick="ui.toggleSearch(true)">
+        <div class="city-group" id="city-trigger">
             <div id="btn-geo" class="geo-btn">📍</div>
             <div id="btn-city" class="city-btn">DÉTECTION...</div>
         </div>
@@ -276,7 +276,6 @@
             const wCode = d.daily.weather_code[day];
             document.getElementById('hero-icon').innerHTML = wCode > 50 ? Logic.svg.rain('var(--accent)') : (wCode > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
             
-            // DOTS
             const setDot = (id, s, e) => { 
                 const r = Logic.analyzeChunk(d.hourly, day, s, e); 
                 const dot = document.getElementById(id);
@@ -287,7 +286,6 @@
             setDot('dot-mi', 11, 15);
             setDot('dot-s', 15, 23);
 
-            // TIMELINE
             const tl = document.getElementById('timeline-box'); tl.innerHTML = '';
             for(let h=0; h<24; h++) {
                 const r = (d.hourly.precipitation ? d.hourly.precipitation[day*24+h] : 0) || (d.hourly.rain[day*24+h] || 0) + (d.hourly.showers[day*24+h] || 0);
@@ -299,7 +297,6 @@
                 tl.appendChild(bar);
             }
 
-            // RADAR HAUTE SENSIBILITÉ (Seuil 0.01mm)
             const radarBits = document.querySelectorAll('.radar-bit');
             radarBits.forEach((bit, i) => {
                 let isRaining = false;
@@ -315,7 +312,6 @@
                 bit.classList.toggle('active', isRaining);
             });
             
-            // CARDS
             const upCard = (id, s, e, t) => {
                 const res = Logic.analyzeChunk(d.hourly, day, s, e);
                 document.getElementById(`card-${id}`).style.borderLeftColor = res.color;
@@ -327,7 +323,6 @@
             upCard('aller', state.config.as, state.config.ae, `${state.config.as}h-${state.config.ae}h`);
             upCard('retour', state.config.rs, state.config.re, `${state.config.rs}h-${state.config.re}h`);
 
-            // STRIP
             const strip = document.getElementById('week-strip'); strip.innerHTML = '';
             for(let i=0; i<5; i++) {
                 const box = document.createElement('div'); box.className = `day-box ${i === day ? 'active' : ''}`;
@@ -381,8 +376,15 @@
     })();
 
     const ui = {
-        toggleSearch: s => { document.getElementById('ov-search').classList.toggle('visible', s); if(s) document.getElementById('inp-city').focus(); },
-        toggleConfig: s => { if(s) ['as','ae','rs','re'].forEach(k => document.getElementById(`v-${k}`).innerText = app.state.config[k].toString().padStart(2,'0')); else app.render(); document.getElementById('ov-config').classList.toggle('visible', s); },
+        toggleSearch: s => { 
+            document.getElementById('ov-search').classList.toggle('visible', s); 
+            if(s) document.getElementById('inp-city').focus(); 
+        },
+        toggleConfig: s => { 
+            if(s) ['as','ae','rs','re'].forEach(k => document.getElementById(`v-${k}`).innerText = app.state.config[k].toString().padStart(2,'0')); 
+            else app.render(); 
+            document.getElementById('ov-config').classList.toggle('visible', s); 
+        },
         search: async q => {
             if(q.length < 3) return;
             const d = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr&format=json`)).json();
@@ -396,7 +398,10 @@
     };
 
     let st;
+    // CORRECTION DES EVENT LISTENERS
+    document.getElementById('city-trigger').onclick = () => ui.toggleSearch(true);
     document.getElementById('btn-geo').onclick = (e) => { e.stopPropagation(); app.useGeo(); };
+    
     document.getElementById('inp-city').oninput = e => { clearTimeout(st); st = setTimeout(() => ui.search(e.target.value), 400); };
     document.querySelectorAll('.commute-card').forEach(c => c.onclick = () => ui.toggleConfig(true));
 
