@@ -69,7 +69,6 @@
             width: 110px; justify-content: space-between;
         }
         .trend-lbl { font-size: 9px; font-weight: 800; color: var(--text-muted); width: 40px; }
-        /* Style d'alignement corrigé */
         .trend-ico { flex: 1; display: flex; justify-content: center; align-items: center; }
         .trend-ico svg { width: 14px; height: 14px; }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #333; transition: 0.3s; flex-shrink: 0; }
@@ -218,18 +217,28 @@
     <div id="ov-config" class="overlay">
         <div class="section-header" style="color:var(--accent)">HORAIRES DE TRAJET</div>
         <div style="margin-top:15px; font-size:10px; font-weight:800; color:var(--text-muted)">MATIN</div>
-        <div class="cfg-row"><span>Départ</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('as',-1)">-</div><span id="v-as">09</span><div class="btn-icon" onclick="window.app.adj('as',1)">+</div></div></div>
-        <div class="cfg-row"><span>Arrivée</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('ae',-1)">-</div><span id="v-ae">11</span><div class="btn-icon" onclick="window.app.adj('ae',1)">+</div></div></div>
+        <div class="cfg-row"><span>Départ</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('as',-1)">-</div><span id="v-as">--</span><div class="btn-icon" onclick="window.app.adj('as',1)">+</div></div></div>
+        <div class="cfg-row"><span>Arrivée</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('ae',-1)">-</div><span id="v-ae">--</span><div class="btn-icon" onclick="window.app.adj('ae',1)">+</div></div></div>
         <div style="margin-top:15px; font-size:10px; font-weight:800; color:var(--text-muted)">SOIR</div>
-        <div class="cfg-row"><span>Départ</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('rs',-1)">-</div><span id="v-rs">17</span><div class="btn-icon" onclick="window.app.adj('rs',1)">+</div></div></div>
-        <div class="cfg-row"><span>Arrivée</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('re',-1)">-</div><span id="v-re">19</span><div class="btn-icon" onclick="window.app.adj('re',1)">+</div></div></div>
+        <div class="cfg-row"><span>Départ</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('rs',-1)">-</div><span id="v-rs">--</span><div class="btn-icon" onclick="window.app.adj('rs',1)">+</div></div></div>
+        <div class="cfg-row"><span>Arrivée</span><div style="display:flex; gap:10px;"><div class="btn-icon" onclick="window.app.adj('re',-1)">-</div><span id="v-re">--</span><div class="btn-icon" onclick="window.app.adj('re',1)">+</div></div></div>
         <button class="btn-act" onclick="window.ui.toggleConfig(false)">VALIDER</button>
     </div>
 </div>
 
 <script>
 {
-    // LOGIC HELPER
+    // ==========================================
+    // CONFIGURATION DES HORAIRES PAR DÉFAUT
+    // ==========================================
+    const DEFAULT_COMMUTE = {
+        matin_aller_start: 9,
+        matin_aller_end: 11,
+        soir_retour_start: 17,
+        soir_retour_end: 19
+    };
+    // ==========================================
+
     const Logic = {
         analyzeChunk: (hourly, dayIdx, start, end) => {
             const offset = dayIdx * 24;
@@ -250,44 +259,43 @@
         }
     };
 
-    // APP LOGIC
     window.app = (() => {
-        const state = { config: { lat: 50.62, lon: 3.14, name: "...", as: 9, ae: 11, rs: 17, re: 19 }, weather: null, day: 0 };
+        const state = { 
+            config: { 
+                lat: 50.62, 
+                lon: 3.14, 
+                name: "...", 
+                as: DEFAULT_COMMUTE.matin_aller_start, 
+                ae: DEFAULT_COMMUTE.matin_aller_end, 
+                rs: DEFAULT_COMMUTE.soir_retour_start, 
+                re: DEFAULT_COMMUTE.soir_retour_end 
+            }, 
+            weather: null, 
+            day: 0 
+        };
         
         const render = () => {
             if(!state.weather) return;
             const d = state.weather; const now = new Date(); const h = now.getHours(); const m = now.getMinutes();
             
-            // Header
             document.getElementById('btn-city').innerText = state.config.name;
             document.getElementById('lbl-sync').innerText = "MAJ " + now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
             document.getElementById('lbl-date').innerText = state.day === 0 ? "Aujourd'hui" : new Date(d.daily.time[state.day]).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'}).toUpperCase();
             document.getElementById('lbl-temp').innerText = (state.day === 0 ? d.current.temperature_2m : d.daily.temperature_2m_max[state.day]).toFixed(1);
             
-            // Hero Icon
             const wCode = d.daily.weather_code[state.day];
             document.getElementById('hero-icon').innerHTML = wCode > 50 ? Logic.svg.rain('var(--accent)') : (wCode > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
             
-            // Dots & Sub-Icons (Matin, Midi, Soir)
             const iconIds = ['ico-m','ico-mi','ico-s'];
             ['dot-m','dot-mi','dot-s'].forEach((id, i) => {
                 const range = [[0,11],[11,15],[15,23]][i];
                 const r = Logic.analyzeChunk(d.hourly, state.day, range[0], range[1]);
-                
-                // Update Dot
                 const dot = document.getElementById(id);
                 dot.style.background = r.color; dot.style.boxShadow = `0 0 8px ${r.color}`;
-                
-                // Update Mini Icon
                 const icoCont = document.getElementById(iconIds[i]);
-                if(r.isRain) {
-                    icoCont.innerHTML = Logic.svg.rain('var(--accent)');
-                } else {
-                    icoCont.innerHTML = wCode > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)');
-                }
+                icoCont.innerHTML = r.isRain ? Logic.svg.rain('var(--accent)') : (wCode > 3 ? Logic.svg.cloud('var(--text-muted)') : Logic.svg.sun('var(--warn)'));
             });
 
-            // Timeline
             const tl = document.getElementById('timeline-box'); tl.innerHTML = '';
             for(let i=0; i<24; i++) {
                 const r = (d.hourly.precipitation ? d.hourly.precipitation[state.day*24+i] : 0);
@@ -299,17 +307,12 @@
                 tl.appendChild(bar);
             }
 
-            // Radar
             const startIndex = (h * 4) + Math.floor(m / 15);
             document.querySelectorAll('.radar-bit').forEach((bit, i) => {
-                let active = false;
-                if(state.day === 0 && d.minutely_15) {
-                    active = (d.minutely_15.precipitation[startIndex + i] || 0) > 0.01;
-                }
+                let active = (state.day === 0 && d.minutely_15) ? (d.minutely_15.precipitation[startIndex + i] || 0) > 0.01 : false;
                 bit.classList.toggle('active', active);
             });
             
-            // Cards Update
             const upCard = (id, s, e) => {
                 const res = Logic.analyzeChunk(d.hourly, state.day, s, e);
                 document.getElementById(`card-${id}`).style.borderLeftColor = res.color;
@@ -321,7 +324,6 @@
             upCard('aller', state.config.as, state.config.ae);
             upCard('retour', state.config.rs, state.config.re);
 
-            // Week Strip
             const strip = document.getElementById('week-strip'); strip.innerHTML = '';
             for(let i=0; i<5; i++) {
                 const box = document.createElement('div'); box.className = `day-box ${i === state.day ? 'active' : ''}`;
@@ -373,7 +375,6 @@
         }};
     })();
 
-    // UI CONTROLLER
     window.ui = {
         toggleSearch: s => { 
             document.getElementById('ov-search').classList.toggle('visible', s); 
@@ -404,7 +405,6 @@
         }
     };
 
-    // EVENTS
     let st;
     document.getElementById('city-trigger').onclick = () => window.ui.toggleSearch(true);
     document.getElementById('btn-geo').onclick = (e) => { e.stopPropagation(); window.app.useGeo(); };
@@ -412,7 +412,13 @@
     document.getElementById('card-aller').onclick = () => window.ui.toggleConfig(true);
     document.getElementById('card-retour').onclick = () => window.ui.toggleConfig(true);
 
-    window.onload = () => window.app.useGeo();
+    window.onload = () => {
+        // Init labels from default config
+        ['as','ae','rs','re'].forEach(k => {
+            document.getElementById(`v-${k}`).innerText = window.app.state.config[k].toString().padStart(2,'0');
+        });
+        window.app.useGeo();
+    };
 }
 </script>
 </body>
