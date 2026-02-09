@@ -99,8 +99,20 @@
         .time-bar.rain-heavy { background: var(--rain-heavy-ui); }
         .time-bar.current { background: #fff; box-shadow: 0 0 8px #fff; z-index: 2; }
 
-        .radar-strip { display: flex; gap: 4px; height: 6px; margin-bottom: 12px; }
-        .radar-bit { flex: 1; background: rgba(255,255,255,0.05); border-radius: 2px; transition: 0.3s; }
+        /* --- MODIFICATION ICI : Styles pour le conteneur radar et son liseré --- */
+        .radar-strip { 
+            display: flex; gap: 4px; 
+            margin-bottom: 12px; 
+            
+            /* Ajout de la structure pour le liseré */
+            border: 1px solid transparent; 
+            border-radius: 6px; 
+            padding: 4px; 
+            transition: all 0.4s ease;
+        }
+        /* Fin modification CSS */
+
+        .radar-bit { flex: 1; height: 6px; background: rgba(255,255,255,0.05); border-radius: 2px; transition: 0.3s; }
         .radar-bit.active { background: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
         .radar-labels { display: flex; justify-content: space-between; font-size: 7px; color: var(--text-muted); margin-top: -8px; margin-bottom: 10px; padding: 0 2px; }
 
@@ -307,11 +319,26 @@
                 tl.appendChild(bar);
             }
 
+            // --- MODIFICATION ICI : Logique du liseré radar ---
             const startIndex = (h * 4) + Math.floor(m / 15);
+            const radarContainer = document.getElementById('radar-container');
+            let hasRain = false; // Flag pour détecter la pluie dans l'heure
+
             document.querySelectorAll('.radar-bit').forEach((bit, i) => {
                 let active = (state.day === 0 && d.minutely_15) ? (d.minutely_15.precipitation[startIndex + i] || 0) > 0.01 : false;
+                if (active) hasRain = true; // On lève le drapeau si pluie détectée
                 bit.classList.toggle('active', active);
             });
+            
+            // Application de la couleur de bordure (Vert si pas de pluie, Rouge si pluie)
+            if (hasRain) {
+                radarContainer.style.borderColor = 'var(--danger)';
+                radarContainer.style.boxShadow = '0 0 8px rgba(248, 113, 113, 0.2)'; // Optionnel : lueur rouge légère
+            } else {
+                radarContainer.style.borderColor = 'var(--ok)';
+                radarContainer.style.boxShadow = 'none';
+            }
+            // --- Fin modification JS ---
             
             const upCard = (id, s, e) => {
                 const res = Logic.analyzeChunk(d.hourly, state.day, s, e);
