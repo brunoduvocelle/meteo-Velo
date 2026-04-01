@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeteoCommute V45</title>
+    <title>MeteoCommute V46</title>
     <style>
         :root {
             --glass-surf: rgba(255,255,255,0.04);
@@ -36,7 +36,6 @@
             position: relative; margin: 0 6px;
         }
 
-        /* ── EN-TÊTE ── */
         .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .city-group { display: flex; align-items: center; gap: 6px; cursor: pointer; max-width: 70%; }
         .city-btn { font-size: 13px; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -46,7 +45,6 @@
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
         .date-display { font-size:11px; color:var(--text-muted); text-transform:uppercase; font-weight:600; }
 
-        /* ── HERO ── */
         .hero-section { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--glass-border); }
         .temp-container { display:flex; align-items:center; gap:8px; }
         .temp-val { font-size:46px; font-weight:700; letter-spacing:-2px; line-height:1; }
@@ -58,36 +56,17 @@
         .trend-ico svg { width:12px; height:12px; }
         .status-dot { width:7px; height:7px; border-radius:50%; background:#333; transition:0.3s; flex-shrink:0; }
 
-        /* ── SECTION HEADER ── */
         .section-header { display:flex; justify-content:space-between; align-items:center; font-size:9px; font-weight:800; color:var(--text-muted); margin:8px 0 4px; text-transform:uppercase; letter-spacing:1.2px; }
 
-        /* ══════════════════════════════════════
-           BLOC CONDENSÉ : FIABILITÉ + VENT
-           Une seule ligne compacte
-        ══════════════════════════════════════ */
-        .compact-strip {
-            display: flex; gap: 6px; margin-bottom: 8px;
-        }
-
-        /* Fiabilité — moitié gauche */
-        .conf-compact {
-            flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border);
-            border-radius: 8px; padding: 5px 8px; display: flex; flex-direction: column; gap: 3px;
-        }
+        .compact-strip { display: flex; gap: 6px; margin-bottom: 8px; }
+        .conf-compact { flex:1; background:rgba(0,0,0,0.3); border:1px solid var(--glass-border); border-radius:8px; padding:5px 8px; display:flex; flex-direction:column; gap:3px; }
         .conf-top { display:flex; justify-content:space-between; align-items:center; }
         .conf-lbl { font-size:8px; font-weight:800; color:var(--text-muted); }
         .conf-score { font-size:12px; font-weight:800; }
         .conf-track { height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden; }
         .conf-fill { height:100%; border-radius:2px; transition:width 0.6s, background 0.4s; }
         .conf-sub { font-size:7px; color:var(--text-muted); }
-
-        /* Vent — moitié droite */
-        .wind-compact {
-            flex: 1; border-radius: 8px; padding: 5px 8px;
-            background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border);
-            border-left: 3px solid var(--text-muted); transition: border-left-color 0.3s;
-            display: flex; justify-content: space-between; align-items: center;
-        }
+        .wind-compact { flex:1; border-radius:8px; padding:5px 8px; background:rgba(0,0,0,0.3); border:1px solid var(--glass-border); border-left:3px solid var(--text-muted); transition:border-left-color 0.3s; display:flex; justify-content:space-between; align-items:center; }
         .wind-c-left { display:flex; flex-direction:column; gap:2px; }
         .wind-c-lbl { font-size:8px; font-weight:800; color:var(--text-muted); }
         .wind-c-status { font-size:11px; font-weight:800; }
@@ -97,7 +76,6 @@
         .wind-c-unit { font-size:7px; color:var(--text-muted); }
         .wind-c-arrow { font-size:14px; }
 
-        /* ── TIMELINE ── */
         .timeline-container { margin-bottom:8px; }
         .timeline-box { display:flex; align-items:flex-end; justify-content:space-between; height:38px; background:rgba(0,0,0,0.3); border-radius:6px 6px 0 0; padding:0 4px; }
         .time-labels { display:flex; justify-content:space-between; padding:2px 4px; background:rgba(0,0,0,0.2); border-radius:0 0 6px 6px; font-size:7px; color:var(--text-muted); font-weight:600; font-family:monospace; }
@@ -106,29 +84,47 @@
         .time-bar.rain-heavy { background:var(--rain-heavy-ui); }
         .time-bar.current { background:#fff; box-shadow:0 0 6px #fff; z-index:2; }
 
-        /* ── RADAR ── */
         .radar-strip { display:flex; gap:4px; margin-bottom:4px; border:1px solid transparent; border-radius:5px; padding:3px; transition:all 0.4s; }
         .radar-bit { flex:1; height:5px; background:rgba(255,255,255,0.05); border-radius:2px; transition:0.3s; }
         .radar-bit.active { background:var(--accent); box-shadow:0 0 10px var(--accent-glow); }
         .radar-labels { display:flex; justify-content:space-between; font-size:7px; color:var(--text-muted); margin-bottom:8px; padding:0 2px; }
 
-        /* ── TRAJETS ── */
-        .commute-card { background:linear-gradient(145deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01)); border:1px solid var(--glass-border); border-radius:10px; padding:7px 12px; margin-bottom:6px; cursor:pointer; border-left:3px solid var(--text-muted); display:flex; justify-content:space-between; align-items:center; transition:0.2s; }
+        /* ── CARTES TRAJETS ── */
+        .commute-card {
+            background:linear-gradient(145deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));
+            border:1px solid var(--glass-border); border-radius:10px;
+            padding:7px 12px; margin-bottom:6px; cursor:pointer;
+            border-left:3px solid var(--text-muted);
+            display:flex; justify-content:space-between; align-items:center; transition:0.2s;
+        }
         .commute-card:hover { background:rgba(255,255,255,0.07); transform:translateY(-1px); }
-        .c-left { display:flex; flex-direction:column; gap:1px; }
+        .c-left { display:flex; flex-direction:column; gap:1px; flex:1; }
         .c-label { font-size:9px; font-weight:800; color:var(--text-muted); }
         .c-status { font-size:13px; font-weight:800; }
+
+        /* Ligne desc + pastille vent sur la même ligne */
+        .c-bottom { display:flex; align-items:center; gap:6px; margin-top:1px; }
         .c-desc { font-size:9px; color:var(--text-muted); opacity:0.8; }
+
+        /* ★ PASTILLE VENT dans la carte trajet */
+        .wind-pill {
+            display: inline-flex; align-items: center; gap: 3px;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 4px; padding: 1px 5px;
+            font-size: 9px; font-weight: 700; font-family: monospace;
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .wind-pill-arrow { font-size: 10px; }
+
+        .c-right { display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0; margin-left:8px; }
         .c-time { font-family:monospace; font-size:11px; color:var(--accent); background:rgba(56,189,248,0.1); padding:2px 7px; border-radius:4px; border:1px solid var(--accent-glow); }
 
-        /* ── SEMAINIER ── */
         .week-strip { display:flex; gap:4px; margin-top:8px; height:68px; border-top:1px solid var(--glass-border); padding-top:10px; }
         .day-box { flex:1; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:0.2s; border:1px solid transparent; }
         .day-box.active { background:rgba(56,189,248,0.12); border-color:rgba(56,189,248,0.3); }
         .d-name { font-size:8px; font-weight:800; color:var(--text-muted); margin-bottom:3px; }
         .d-temp { font-size:11px; font-weight:700; margin-top:3px; }
 
-        /* ── OVERLAYS ── */
         .overlay { position:absolute; inset:0; background:rgba(10,15,30,0.98); z-index:100; display:none; flex-direction:column; padding:20px; border-radius:20px; overflow-y:auto; }
         .overlay.visible { display:flex; animation:fadeIn 0.2s ease-out; }
         @keyframes fadeIn { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }
@@ -144,7 +140,6 @@
 <body>
 <div class="app-window">
 
-    <!-- EN-TÊTE -->
     <div class="header-row">
         <div class="city-group" id="city-trigger">
             <div id="btn-geo" class="geo-btn">📍</div>
@@ -153,7 +148,6 @@
         <div id="lbl-date" class="date-display">--</div>
     </div>
 
-    <!-- HERO -->
     <div class="hero-section">
         <div class="temp-container">
             <div id="hero-icon" class="hero-icon"></div>
@@ -167,14 +161,11 @@
         </div>
     </div>
 
-    <!-- FIABILITÉ + VENT CONDENSÉS -->
     <div class="section-header">
         FIABILITÉ &amp; VENT 🚴
         <span id="lbl-sync" style="font-size:8px;opacity:0.6">--:--</span>
     </div>
     <div class="compact-strip">
-
-        <!-- Fiabilité -->
         <div class="conf-compact">
             <div class="conf-top">
                 <span class="conf-lbl">AROME/ICON</span>
@@ -183,8 +174,6 @@
             <div class="conf-track"><div id="conf-fill" class="conf-fill" style="width:0%;background:var(--ok)"></div></div>
             <div id="conf-sub" class="conf-sub">Calcul...</div>
         </div>
-
-        <!-- Vent -->
         <div id="wind-compact" class="wind-compact">
             <div class="wind-c-left">
                 <span class="wind-c-lbl">VENT</span>
@@ -197,17 +186,14 @@
                 <div class="wind-c-unit">km/h</div>
             </div>
         </div>
-
     </div>
 
-    <!-- PLUIE 24H -->
     <div class="section-header">PLUIE (24H)</div>
     <div class="timeline-container">
         <div id="timeline-box" class="timeline-box"></div>
         <div class="time-labels"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>
     </div>
 
-    <!-- RADAR -->
     <div class="section-header">RADAR TEMPS RÉEL (15m/bloc)</div>
     <div class="radar-strip" id="radar-container">
         <div class="radar-bit"></div><div class="radar-bit"></div>
@@ -215,29 +201,41 @@
     </div>
     <div class="radar-labels"><span>Maintenant</span><span>+1h</span></div>
 
-    <!-- TRAJETS -->
     <div class="section-header">TRAJETS (Configurer)</div>
+
+    <!-- ★ Structure carte enrichie : c-bottom contient desc + pastille vent -->
     <div id="card-aller" class="commute-card">
         <div class="c-left">
             <span class="c-label">ALLER 🚴</span>
             <span id="alert-aller" class="c-status">--</span>
-            <span id="desc-aller" class="c-desc">--</span>
+            <div class="c-bottom">
+                <span id="desc-aller" class="c-desc">--</span>
+                <span id="wind-pill-aller" class="wind-pill" style="display:none">
+                    <span id="wind-pill-arrow-aller" class="wind-pill-arrow">➤</span>
+                    <span id="wind-pill-val-aller">--</span>
+                </span>
+            </div>
         </div>
-        <div><div id="t-aller" class="c-time">--</div></div>
+        <div class="c-right"><div id="t-aller" class="c-time">--</div></div>
     </div>
+
     <div id="card-retour" class="commute-card">
         <div class="c-left">
             <span class="c-label">RETOUR 🚴</span>
             <span id="alert-retour" class="c-status">--</span>
-            <span id="desc-retour" class="c-desc">--</span>
+            <div class="c-bottom">
+                <span id="desc-retour" class="c-desc">--</span>
+                <span id="wind-pill-retour" class="wind-pill" style="display:none">
+                    <span id="wind-pill-arrow-retour" class="wind-pill-arrow">➤</span>
+                    <span id="wind-pill-val-retour">--</span>
+                </span>
+            </div>
         </div>
-        <div><div id="t-retour" class="c-time">--</div></div>
+        <div class="c-right"><div id="t-retour" class="c-time">--</div></div>
     </div>
 
-    <!-- SEMAINIER -->
     <div id="week-strip" class="week-strip"></div>
 
-    <!-- OVERLAY RECHERCHE -->
     <div id="ov-search" class="overlay">
         <div class="section-header" style="color:var(--accent)">RECHERCHE VILLE</div>
         <input type="text" id="inp-city" class="inp-flat" placeholder="Ville...">
@@ -245,7 +243,6 @@
         <button class="btn-act" style="background:transparent;color:white;border:1px solid #333;" onclick="window.ui.toggleSearch(false)">RETOUR</button>
     </div>
 
-    <!-- OVERLAY CONFIG -->
     <div id="ov-config" class="overlay">
         <div class="section-header" style="color:var(--accent)">HORAIRES DE TRAJET</div>
         <div style="margin-top:12px;font-size:9px;font-weight:800;color:var(--text-muted)">MATIN</div>
@@ -264,41 +261,62 @@
     const WIND_THRESHOLDS = { ok:20, warn:35, danger:50 };
 
     const Logic = {
+
+        // ★ analyzeChunk enrichi : retourne aussi avgW (vent moyen) et avgDir (direction moyenne)
         analyzeChunk: (hourly, dayIdx, start, end) => {
             const offset = dayIdx * 24;
-            let maxP=0, maxW=0;
+            let maxP=0, maxW=0, sumW=0, sumDirX=0, sumDirY=0, count=0;
             for (let i=start; i<end; i++) {
                 const idx = offset+i;
-                maxP = Math.max(maxP, hourly.precipitation?.[idx]||0);
-                maxW = Math.max(maxW, hourly.wind_speed_10m?.[idx]||0);
+                const p   = hourly.precipitation?.[idx]  || 0;
+                const w   = hourly.wind_speed_10m?.[idx]  || 0;
+                const dir = hourly.wind_direction_10m?.[idx] || 0;
+                maxP = Math.max(maxP, p);
+                maxW = Math.max(maxW, w);
+                sumW += w;
+                // Moyenne vectorielle de la direction (évite le problème 359°/1°)
+                sumDirX += Math.cos(dir * Math.PI / 180);
+                sumDirY += Math.sin(dir * Math.PI / 180);
+                count++;
             }
+            const avgW   = count ? sumW / count : 0;
+            const avgDir = count ? (Math.atan2(sumDirY/count, sumDirX/count) * 180 / Math.PI + 360) % 360 : 0;
+
             const windBad    = maxW > WIND_THRESHOLDS.warn;
             const windDanger = maxW > WIND_THRESHOLDS.danger;
             let alert, desc, color;
-            if (maxP>1.5||windDanger) {
-                alert = maxP>1.5&&windDanger?"PLUIE+VENT FORT":(maxP>1.5?"PLUIE FORTE":"VENT DANGEREUX");
-                desc  = "Prendre la voiture"; color="var(--danger)";
-            } else if (maxP>0.01||windBad) {
-                alert = maxP>0.01&&windBad?"PLUIE+VENT":(maxP>0.01?"RISQUE PLUIE":"VENT FORT");
-                desc  = maxP>0.01?"K-Way + effort":"Effort accru"; color="var(--warn)";
+            if (maxP>1.5 || windDanger) {
+                alert = maxP>1.5 && windDanger ? "PLUIE+VENT FORT" : (maxP>1.5 ? "PLUIE FORTE" : "VENT DANGEREUX");
+                desc  = "Prendre la voiture"; color = "var(--danger)";
+            } else if (maxP>0.01 || windBad) {
+                alert = maxP>0.01 && windBad ? "PLUIE+VENT" : (maxP>0.01 ? "RISQUE PLUIE" : "VENT FORT");
+                desc  = maxP>0.01 ? "K-Way + effort" : "Effort accru"; color = "var(--warn)";
             } else {
-                alert="VOIE LIBRE"; desc=`Sec · ${maxW.toFixed(0)}km/h`; color="var(--ok)";
+                alert = "VOIE LIBRE"; desc = "Trajet sec"; color = "var(--ok)";
             }
-            return { alert, desc, color, isRain:maxP>0.01 };
+            return { alert, desc, color, isRain:maxP>0.01, avgW, avgDir, maxW };
         },
 
         analyzeWind: (spd) => {
-            if (spd>WIND_THRESHOLDS.danger) return { status:"DANGEREUX", sub:"Vélo déconseillé",   color:"var(--danger)" };
-            if (spd>WIND_THRESHOLDS.warn)   return { status:"FORT",      sub:"Effort important",   color:"var(--warn)"   };
-            if (spd>WIND_THRESHOLDS.ok)     return { status:"MODÉRÉ",    sub:"Prévoir l'effort",   color:"var(--warn)"   };
-            return                                 { status:"FAVORABLE",  sub:"Idéal vélo",         color:"var(--ok)"     };
+            if (spd>WIND_THRESHOLDS.danger) return { status:"DANGEREUX", sub:"Vélo déconseillé", color:"var(--danger)" };
+            if (spd>WIND_THRESHOLDS.warn)   return { status:"FORT",      sub:"Effort important", color:"var(--warn)"   };
+            if (spd>WIND_THRESHOLDS.ok)     return { status:"MODÉRÉ",    sub:"Prévoir l'effort", color:"var(--warn)"   };
+            return                                 { status:"FAVORABLE",  sub:"Idéal vélo",       color:"var(--ok)"     };
         },
 
         windArrow: deg => {
             const a=['↓','↙','←','↖','↑','↗','→','↘'];
             const l=['N','NE','E','SE','S','SO','O','NO'];
-            const i=Math.round(deg/45)%8;
+            const i = Math.round(deg/45) % 8;
             return { arrow:a[i], label:l[i] };
+        },
+
+        // ★ Couleur de la pastille vent selon vitesse moyenne
+        windPillColor: (spd) => {
+            if (spd > WIND_THRESHOLDS.danger) return 'var(--danger)';
+            if (spd > WIND_THRESHOLDS.warn)   return 'var(--warn)';
+            if (spd > WIND_THRESHOLDS.ok)     return 'var(--warn)';
+            return 'var(--text-muted)';
         },
 
         calcConfidence: (p1arr, p2arr, start, len) => {
@@ -343,7 +361,6 @@
                 document.getElementById(['ico-m','ico-mi','ico-s'][i]).innerHTML=r.isRain?Logic.svg.rain('var(--accent)'):(wCode>3?Logic.svg.cloud('var(--text-muted)'):Logic.svg.sun('var(--warn)'));
             });
 
-            // Confiance
             if (state.weather2) {
                 const conf=Logic.calcConfidence(d.hourly.precipitation,state.weather2.hourly.precipitation,state.day*24,24);
                 const cc=conf.score>=80?'var(--ok)':(conf.score>=50?'var(--warn)':'var(--danger)');
@@ -354,7 +371,6 @@
                 document.getElementById('conf-sub').innerText=conf.sub;
             }
 
-            // Vent compact
             const wi=state.day*24+(state.day===0?h:9);
             const spd=d.hourly.wind_speed_10m?.[wi]||0;
             const gst=d.hourly.wind_gusts_10m?.[wi]||0;
@@ -369,7 +385,6 @@
             document.getElementById('wind-speed').style.color=wInfo.color;
             document.getElementById('wind-arrow').innerText=wa.arrow;
 
-            // Timeline
             const tl=document.getElementById('timeline-box'); tl.innerHTML='';
             for(let i=0;i<24;i++){
                 const r=d.hourly.precipitation?.[state.day*24+i]||0;
@@ -381,7 +396,6 @@
                 tl.appendChild(bar);
             }
 
-            // Radar
             const si=h*4+Math.floor(m/15);
             const rc=document.getElementById('radar-container');
             let hasRain=false;
@@ -393,19 +407,32 @@
             rc.style.borderColor=hasRain?'var(--danger)':'var(--ok)';
             rc.style.boxShadow=hasRain?'0 0 8px rgba(248,113,113,0.2)':'none';
 
-            // Trajets
-            const upCard=(id,s,e)=>{
-                const res=Logic.analyzeChunk(d.hourly,state.day,s,e);
-                document.getElementById(`card-${id}`).style.borderLeftColor=res.color;
-                document.getElementById(`alert-${id}`).innerText=res.alert;
-                document.getElementById(`alert-${id}`).style.color=res.color;
-                document.getElementById(`desc-${id}`).innerText=res.desc;
-                document.getElementById(`t-${id}`).innerText=`${s}h–${e}h`;
-            };
-            upCard('aller',state.config.as,state.config.ae);
-            upCard('retour',state.config.rs,state.config.re);
+            // ★ upCard enrichi avec pastille vent
+            const upCard = (id, s, e) => {
+                const res = Logic.analyzeChunk(d.hourly, state.day, s, e);
+                const wa2 = Logic.windArrow(res.avgDir);
+                const pillColor = Logic.windPillColor(res.avgW);
 
-            // Semainier
+                document.getElementById(`card-${id}`).style.borderLeftColor = res.color;
+                document.getElementById(`alert-${id}`).innerText  = res.alert;
+                document.getElementById(`alert-${id}`).style.color = res.color;
+                document.getElementById(`desc-${id}`).innerText   = res.desc;
+                document.getElementById(`t-${id}`).innerText      = `${s}h–${e}h`;
+
+                // Pastille vent : toujours affichée
+                const pill  = document.getElementById(`wind-pill-${id}`);
+                const arrow = document.getElementById(`wind-pill-arrow-${id}`);
+                const val   = document.getElementById(`wind-pill-val-${id}`);
+                pill.style.display = 'inline-flex';
+                pill.style.color   = pillColor;
+                pill.style.borderColor = pillColor === 'var(--text-muted)' ? 'rgba(255,255,255,0.12)' : pillColor;
+                arrow.innerText = wa2.arrow;
+                val.innerText   = `${res.avgW.toFixed(0)} km/h ${wa2.label}`;
+            };
+
+            upCard('aller',  state.config.as, state.config.ae);
+            upCard('retour', state.config.rs, state.config.re);
+
             const strip=document.getElementById('week-strip'); strip.innerHTML='';
             for(let i=0;i<5;i++){
                 const box=document.createElement('div'); box.className=`day-box ${i===state.day?'active':''}`;
