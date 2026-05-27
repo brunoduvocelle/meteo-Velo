@@ -98,15 +98,16 @@
             display:flex; justify-content:space-between; align-items:center; transition:0.2s;
         }
         .commute-card:hover { background:rgba(255,255,255,0.07); transform:translateY(-1px); }
-        .c-left { display:flex; flex-direction:column; gap:1px; flex:1; }
+        
+        .c-left { display:flex; flex-direction:column; gap:1px; flex:1; min-width: 0; }
         .c-label { font-size:9px; font-weight:800; color:var(--text-muted); }
         .c-status { font-size:13px; font-weight:800; }
 
-        /* Ligne desc + pastille vent sur la même ligne */
+        /* Ligne desc + pastille vent */
         .c-bottom { display:flex; align-items:center; gap:6px; margin-top:1px; }
         .c-desc { font-size:9px; color:var(--text-muted); opacity:0.8; }
 
-        /* ★ PASTILLE VENT dans la carte trajet */
+        /* PASTILLE VENT dans la carte trajet */
         .wind-pill {
             display: inline-flex; align-items: center; gap: 3px;
             background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
@@ -116,7 +117,28 @@
         }
         .wind-pill-arrow { font-size: 10px; }
 
-        .c-right { display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0; margin-left:8px; }
+        /* ★ NOUVEAU CONTENEUR CENTRAL (Zone Rouge) */
+        .c-center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 10px;
+            flex-shrink: 0;
+        }
+
+        /* ★ STYLE DE LA TEMPÉRATURE CENTRALE */
+        .c-temp-mid {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-main);
+            background: rgba(255,255,255,0.06);
+            padding: 3px 8px;
+            border-radius: 5px;
+            border: 1px solid var(--glass-border);
+            white-space: nowrap;
+        }
+
+        .c-right { display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0; margin-left:4px; }
         .c-time { font-family:monospace; font-size:11px; color:var(--accent); background:rgba(56,189,248,0.1); padding:2px 7px; border-radius:4px; border:1px solid var(--accent-glow); }
 
         .week-strip { display:flex; gap:4px; margin-top:8px; height:68px; border-top:1px solid var(--glass-border); padding-top:10px; }
@@ -203,7 +225,7 @@
 
     <div class="section-header">TRAJETS (Configurer)</div>
 
-    <!-- ★ Structure carte enrichie : c-bottom contient desc + pastille vent -->
+    <!-- Carte ALLER avec la température au centre -->
     <div id="card-aller" class="commute-card">
         <div class="c-left">
             <span class="c-label">ALLER 🚴</span>
@@ -216,9 +238,18 @@
                 </span>
             </div>
         </div>
-        <div class="c-right"><div id="t-aller" class="c-time">--</div></div>
+        
+        <!-- ★ Température moyenne au centre -->
+        <div class="c-center">
+            <div id="temp-aller" class="c-temp-mid">--°C</div>
+        </div>
+        
+        <div class="c-right">
+            <div id="t-aller" class="c-time">--</div>
+        </div>
     </div>
 
+    <!-- Carte RETOUR avec la température au centre -->
     <div id="card-retour" class="commute-card">
         <div class="c-left">
             <span class="c-label">RETOUR 🚴</span>
@@ -231,7 +262,15 @@
                 </span>
             </div>
         </div>
-        <div class="c-right"><div id="t-retour" class="c-time">--</div></div>
+        
+        <!-- ★ Température moyenne au centre -->
+        <div class="c-center">
+            <div id="temp-retour" class="c-temp-mid">--°C</div>
+        </div>
+        
+        <div class="c-right">
+            <div id="t-retour" class="c-time">--</div>
+        </div>
     </div>
 
     <div id="week-strip" class="week-strip"></div>
@@ -262,24 +301,27 @@
 
     const Logic = {
 
-        // ★ analyzeChunk enrichi : retourne aussi avgW (vent moyen) et avgDir (direction moyenne)
         analyzeChunk: (hourly, dayIdx, start, end) => {
             const offset = dayIdx * 24;
-            let maxP=0, maxW=0, sumW=0, sumDirX=0, sumDirY=0, count=0;
+            let maxP=0, maxW=0, sumW=0, sumDirX=0, sumDirY=0, count=0, sumT=0;
             for (let i=start; i<end; i++) {
                 const idx = offset+i;
                 const p   = hourly.precipitation?.[idx]  || 0;
                 const w   = hourly.wind_speed_10m?.[idx]  || 0;
                 const dir = hourly.wind_direction_10m?.[idx] || 0;
+                const t   = hourly.temperature_2m?.[idx] || 0;
+                
                 maxP = Math.max(maxP, p);
                 maxW = Math.max(maxW, w);
                 sumW += w;
-                // Moyenne vectorielle de la direction (évite le problème 359°/1°)
+                sumT += t;
+                
                 sumDirX += Math.cos(dir * Math.PI / 180);
                 sumDirY += Math.sin(dir * Math.PI / 180);
                 count++;
             }
             const avgW   = count ? sumW / count : 0;
+            const avgT   = count ? sumT / count : 0;
             const avgDir = count ? (Math.atan2(sumDirY/count, sumDirX/count) * 180 / Math.PI + 360) % 360 : 0;
 
             const windBad    = maxW > WIND_THRESHOLDS.warn;
@@ -294,7 +336,7 @@
             } else {
                 alert = "VOIE LIBRE"; desc = "Trajet sec"; color = "var(--ok)";
             }
-            return { alert, desc, color, isRain:maxP>0.01, avgW, avgDir, maxW };
+            return { alert, desc, color, isRain:maxP>0.01, avgW, avgDir, maxW, avgT };
         },
 
         analyzeWind: (spd) => {
@@ -311,7 +353,6 @@
             return { arrow:a[i], label:l[i] };
         },
 
-        // ★ Couleur de la pastille vent selon vitesse moyenne
         windPillColor: (spd) => {
             if (spd > WIND_THRESHOLDS.danger) return 'var(--danger)';
             if (spd > WIND_THRESHOLDS.warn)   return 'var(--warn)';
@@ -407,7 +448,6 @@
             rc.style.borderColor=hasRain?'var(--danger)':'var(--ok)';
             rc.style.boxShadow=hasRain?'0 0 8px rgba(248,113,113,0.2)':'none';
 
-            // ★ upCard enrichi avec pastille vent
             const upCard = (id, s, e) => {
                 const res = Logic.analyzeChunk(d.hourly, state.day, s, e);
                 const wa2 = Logic.windArrow(res.avgDir);
@@ -418,8 +458,11 @@
                 document.getElementById(`alert-${id}`).style.color = res.color;
                 document.getElementById(`desc-${id}`).innerText   = res.desc;
                 document.getElementById(`t-${id}`).innerText      = `${s}h–${e}h`;
+                
+                // Température moyenne affichée au centre de la carte
+                document.getElementById(`temp-${id}`).innerText   = `${res.avgT.toFixed(1)}°C`;
 
-                // Pastille vent : toujours affichée
+                // Pastille vent
                 const pill  = document.getElementById(`wind-pill-${id}`);
                 const arrow = document.getElementById(`wind-pill-arrow-${id}`);
                 const val   = document.getElementById(`wind-pill-val-${id}`);
@@ -446,7 +489,7 @@
 
         const fetchW = async () => {
             const base=`latitude=${state.config.lat}&longitude=${state.config.lon}&timezone=auto&forecast_days=5`;
-            const ch=`hourly=precipitation,rain,showers,wind_speed_10m,wind_gusts_10m,wind_direction_10m`;
+            const ch=`hourly=precipitation,rain,showers,wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m`;
             try {
                 const [r1,r2]=await Promise.all([
                     fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m&daily=weather_code,temperature_2m_max&${ch}&minutely_15=precipitation&models=meteofrance_arome_france`),
