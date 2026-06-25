@@ -535,7 +535,10 @@
     })();
 
     window.ui = {
-        toggleSearch: s=>{ document.getElementById('ov-search').classList.toggle('visible',s); if(s){ document.getElementById('inp-city').value=''; document.getElementById('inp-city').focus(); } } };
+        toggleSearch: s=>{ document.getElementById('ov-search').classList.toggle('visible',s); if(s)document.getElementById('inp-city').focus(); },
+        toggleConfig: s=>{ if(s)['as','ae','rs','re'].forEach(k=>document.getElementById(`v-${k}`).innerText=window.app.state.config[k].toString().padStart(2,'0')); else window.app.render(); document.getElementById('ov-config').classList.toggle('visible',s); },
+        search: async q=>{ if(q.length<3)return; try{ const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr&format=json`); const d=await r.json(); const l=document.getElementById('lst-results'); l.innerHTML=''; (d.results||[]).forEach(c=>{ const div=document.createElement('div'); div.className='res-row'; div.innerHTML=`<b>${c.name}</b> <small style="opacity:0.5">${c.admin1||''}</small>`; div.onclick=()=>{ window.app.state.config={...window.app.state.config,lat:c.latitude,lon:c.longitude,name:c.name.toUpperCase()}; window.app.fetch(); window.ui.toggleSearch(false); }; l.appendChild(div); }); }catch(e){} }
+    };
 
     let st;
     document.getElementById('city-trigger').onclick=()=>window.ui.toggleSearch(true);
