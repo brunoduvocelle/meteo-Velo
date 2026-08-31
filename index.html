@@ -141,9 +141,11 @@
         .c-right { display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0; margin-left:4px; }
         .c-time { font-family:monospace; font-size:11px; color:var(--accent); background:rgba(56,189,248,0.1); padding:2px 7px; border-radius:4px; border:1px solid var(--accent-glow); }
 
-        .week-strip { display:flex; gap:4px; margin-top:8px; height:68px; border-top:1px solid var(--glass-border); padding-top:10px; }
-        .day-box { flex:1; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:0.2s; border:1px solid transparent; }
+        .week-strip { display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; margin-top:8px; border-top:1px solid var(--glass-border); padding-top:10px; }
+        .day-box { height:56px; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:0.2s; border:1px solid transparent; background: rgba(255,255,255,0.02); }
         .day-box.active { background:rgba(56,189,248,0.12); border-color:rgba(56,189,248,0.3); }
+        .radar-section { transition: opacity 0.3s, filter 0.3s; }
+        .radar-section.disabled { opacity: 0.3; filter: grayscale(1); pointer-events: none; }
         .d-name { font-size:8px; font-weight:800; color:var(--text-muted); margin-bottom:3px; }
         .d-temp { font-size:11px; font-weight:700; margin-top:3px; }
 
@@ -190,7 +192,7 @@
     <div class="compact-strip">
         <div class="conf-compact">
             <div class="conf-top">
-                <span class="conf-lbl">AROME/ICON</span>
+                <span id="conf-lbl" class="conf-lbl">INDICE FIABILITÉ</span>
                 <span id="conf-score" class="conf-score" style="color:var(--ok)">--%</span>
             </div>
             <div class="conf-track"><div id="conf-fill" class="conf-fill" style="width:0%;background:var(--ok)"></div></div>
@@ -216,12 +218,14 @@
         <div class="time-labels"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>
     </div>
 
-    <div class="section-header">Radar Pluie dans l'heure (15m/bloc)</div>
-    <div class="radar-strip" id="radar-container">
-        <div class="radar-bit"></div><div class="radar-bit"></div>
-        <div class="radar-bit"></div><div class="radar-bit"></div>
+    <div id="radar-section" class="radar-section">
+        <div class="section-header">Radar Pluie dans l'heure (15m/bloc)</div>
+        <div class="radar-strip" id="radar-container">
+            <div class="radar-bit"></div><div class="radar-bit"></div>
+            <div class="radar-bit"></div><div class="radar-bit"></div>
+        </div>
+        <div class="radar-labels"><span>Maintenant</span><span>+1h</span></div>
     </div>
-    <div class="radar-labels"><span>Maintenant</span><span>+1h</span></div>
 
     <div class="section-header">TRAJETS (Configurer)</div>
 
@@ -360,13 +364,41 @@
             return 'var(--text-muted)';
         },
 
-        calcConfidence: (p1arr, p2arr, start, len) => {
-            const p1=p1arr.slice(start,start+len), p2=p2arr.slice(start,start+len);
-            if (!p1.length||!p2.length) return { score:50, sub:"Données insuffisantes" };
-            let tot=0;
-            p1.forEach((v,i)=>{ tot+=Math.abs((v||0)-(p2[i]||0)); });
-            const score=Math.max(0,Math.min(100,Math.round(100-(tot/p1.length)*40)));
-            return { score, sub: score>=80?"Fiable ✓":(score>=50?"Incertitude":"Peu fiable") };
+        calcConfidence: (modelsData, start, len) => {
+            const activeSlices = [];
+            for (const arr of modelsData) {
+                if (arr && arr.length > start) {
+                    const slice = arr.slice(start, start + len);
+                    const hasData = slice.some(v => v !== null && v !== undefined);
+                    if (hasData) {
+                        activeSlices.push(slice.map(v => v || 0));
+                    }
+                }
+            }
+
+            const K = activeSlices.length;
+            if (K < 2) return { score: 50, sub: "Données insuffisantes", activeCount: 0 };
+
+            let totDiff = 0;
+            for (let i = 0; i < len; i++) {
+                let hourDiffSum = 0;
+                let pairCount = 0;
+                for (let m1 = 0; m1 < K; m1++) {
+                    for (let m2 = m1 + 1; m2 < K; m2++) {
+                        hourDiffSum += Math.abs(activeSlices[m1][i] - activeSlices[m2][i]);
+                        pairCount++;
+                    }
+                }
+                totDiff += (hourDiffSum / pairCount);
+            }
+
+            const avgDiff = totDiff / len;
+            const score = Math.max(0, Math.min(100, Math.round(100 - avgDiff * 40)));
+            return {
+                score,
+                sub: score >= 80 ? "Fiable ✓" : (score >= 50 ? "Incertitude" : "Peu fiable"),
+                activeCount: K
+            };
         },
 
         svg: {
@@ -379,7 +411,7 @@
     window.app = (() => {
         const state = {
             config: { lat:50.62, lon:3.14, name:"...", as:DEFAULT_COMMUTE.matin_aller_start, ae:DEFAULT_COMMUTE.matin_aller_end, rs:DEFAULT_COMMUTE.soir_retour_start, re:DEFAULT_COMMUTE.soir_retour_end },
-            weather:null, weather2:null, day:0
+            weather:null, modelsData:null, day:0
         };
 
         const render = () => {
@@ -388,7 +420,7 @@
 
             document.getElementById('btn-city').innerText = state.config.name;
             document.getElementById('lbl-sync').innerText = "MAJ "+now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-            document.getElementById('lbl-date').innerText = state.day===0?"Aujourd'hui":new Date(d.daily.time[state.day]).toLocaleDateString('fr-FR',{weekday:'short',day:'numeric'}).toUpperCase();
+            document.getElementById('lbl-date').innerText = new Date(d.daily.time[state.day]).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase();
             document.getElementById('lbl-temp').innerText = (state.day===0?d.current.temperature_2m:d.daily.temperature_2m_max[state.day]).toFixed(1);
 
             const wCode=d.daily.weather_code[state.day];
@@ -402,14 +434,29 @@
                 document.getElementById(['ico-m','ico-mi','ico-s'][i]).innerHTML=r.isRain?Logic.svg.rain('var(--accent)'):(wCode>3?Logic.svg.cloud('var(--text-muted)'):Logic.svg.sun('var(--warn)'));
             });
 
-            if (state.weather2) {
-                const conf=Logic.calcConfidence(d.hourly.precipitation,state.weather2.hourly.precipitation,state.day*24,24);
-                const cc=conf.score>=80?'var(--ok)':(conf.score>=50?'var(--warn)':'var(--danger)');
-                document.getElementById('conf-score').innerText=conf.score+'%';
-                document.getElementById('conf-score').style.color=cc;
-                document.getElementById('conf-fill').style.width=conf.score+'%';
-                document.getElementById('conf-fill').style.background=cc;
-                document.getElementById('conf-sub').innerText=conf.sub;
+            if (state.modelsData && state.modelsData.hourly) {
+                const mh = state.modelsData.hourly;
+                const modelsPrecip = [
+                    mh.precipitation_meteofrance_arome_france,
+                    mh.precipitation_icon_seamless,
+                    mh.precipitation_ecmwf_ifs025,
+                    mh.precipitation_meteofrance_arpege_europe,
+                    mh.precipitation_gfs_seamless,
+                    mh.precipitation_gem_global
+                ];
+                const conf = Logic.calcConfidence(modelsPrecip, state.day * 24, 24);
+                const cc = conf.score >= 80 ? 'var(--ok)' : (conf.score >= 50 ? 'var(--warn)' : 'var(--danger)');
+                document.getElementById('conf-lbl').innerText = `FIABILITÉ (${conf.activeCount} MODÈLES)`;
+                document.getElementById('conf-score').innerText = conf.score + '%';
+                document.getElementById('conf-score').style.color = cc;
+                document.getElementById('conf-fill').style.width = conf.score + '%';
+                document.getElementById('conf-fill').style.background = cc;
+                document.getElementById('conf-sub').innerText = conf.sub;
+            } else {
+                document.getElementById('conf-lbl').innerText = 'INDICE FIABILITÉ';
+                document.getElementById('conf-score').innerText = '--%';
+                document.getElementById('conf-fill').style.width = '0%';
+                document.getElementById('conf-sub').innerText = "Indisponible";
             }
 
             const wi=state.day*24+(state.day===0?h:9);
@@ -447,6 +494,7 @@
             });
             rc.style.borderColor=hasRain?'var(--danger)':'var(--ok)';
             rc.style.boxShadow=hasRain?'0 0 8px rgba(248,113,113,0.2)':'none';
+            document.getElementById('radar-section').classList.toggle('disabled', state.day !== 0);
 
             const upCard = (id, s, e) => {
                 const res = Logic.analyzeChunk(d.hourly, state.day, s, e);
@@ -477,7 +525,7 @@
             upCard('retour', state.config.rs, state.config.re);
 
             const strip=document.getElementById('week-strip'); strip.innerHTML='';
-            for(let i=0;i<5;i++){
+            for(let i=0;i<8;i++){
                 const box=document.createElement('div'); box.className=`day-box ${i===state.day?'active':''}`;
                 const dt=new Date(d.daily.time[i]), wc=d.daily.weather_code[i];
                 const ico=wc>50?Logic.svg.rain('var(--accent)'):(wc>3?Logic.svg.cloud('var(--text-muted)'):Logic.svg.sun('var(--warn)'));
@@ -488,19 +536,56 @@
         };
 
         const fetchW = async () => {
-            const base=`latitude=${state.config.lat}&longitude=${state.config.lon}&timezone=auto&forecast_days=5`;
+            state.day = 0;
+            const base=`latitude=${state.config.lat}&longitude=${state.config.lon}&timezone=auto&forecast_days=8`;
             const ch=`hourly=precipitation,rain,showers,wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m`;
             try {
-                const [r1,r2]=await Promise.all([
-                    fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m&daily=weather_code,temperature_2m_max&${ch}&minutely_15=precipitation&models=meteofrance_arome_france`),
-                    fetch(`https://api.open-meteo.com/v1/forecast?${base}&${ch}&models=icon_eu`)
-                ]);
-                state.weather=await r1.json(); state.weather2=await r2.json(); render();
-            } catch(e) {
+                // 1. Récupération météo principale (fonctionne partout)
+                const r1 = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m&daily=weather_code,temperature_2m_max&${ch}&minutely_15=precipitation`);
+                state.weather = await r1.json();
+                
+                // 2. Récupération des modèles globaux (fonctionne partout)
+                let globalData = null;
                 try {
-                    const r=await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m&daily=weather_code,temperature_2m_max&${ch}&minutely_15=precipitation`);
-                    state.weather=await r.json(); render();
-                } catch(e2){ console.error(e2); }
+                    const r2 = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=ecmwf_ifs025,gfs_seamless,icon_seamless,gem_global`);
+                    if (r2.ok) {
+                        globalData = await r2.json();
+                    }
+                } catch(errGlobal) {
+                    console.error("Erreur récupération modèles globaux", errGlobal);
+                }
+
+                // 3. Récupération des modèles régionaux européens (échoue hors Europe)
+                let regionalData = null;
+                try {
+                    const r3 = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=meteofrance_arome_france,meteofrance_arpege_europe`);
+                    if (r3.ok) {
+                        regionalData = await r3.json();
+                    }
+                } catch(errRegional) {
+                    console.warn("Modèles régionaux ignorés (hors Europe)", errRegional);
+                }
+
+                // 4. Fusion des données horaires de précipitations
+                state.modelsData = { hourly: {} };
+                if (globalData && globalData.hourly) {
+                    Object.assign(state.modelsData.hourly, globalData.hourly);
+                }
+                if (regionalData && regionalData.hourly) {
+                    Object.assign(state.modelsData.hourly, regionalData.hourly);
+                }
+
+                render();
+            } catch(e) {
+                console.error("Erreur lors de la récupération, essai en mode dégradé...", e);
+                try {
+                    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m&daily=weather_code,temperature_2m_max&${ch}&minutely_15=precipitation`);
+                    state.weather = await r.json();
+                    state.modelsData = null;
+                    render();
+                } catch(e2) {
+                    console.error("Échec complet de la récupération météo", e2);
+                }
             }
         };
 
