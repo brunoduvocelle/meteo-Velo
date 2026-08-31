@@ -142,8 +142,10 @@
         .c-time { font-family:monospace; font-size:11px; color:var(--accent); background:rgba(56,189,248,0.1); padding:2px 7px; border-radius:4px; border:1px solid var(--accent-glow); }
 
         .week-strip { display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; margin-top:8px; border-top:1px solid var(--glass-border); padding-top:10px; }
-        .day-box { height:56px; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:0.2s; border:1px solid transparent; background: rgba(255,255,255,0.02); }
+        .day-box { position: relative; height:56px; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:0.2s; border:1px solid transparent; background: rgba(255,255,255,0.02); }
         .day-box.active { background:rgba(56,189,248,0.12); border-color:rgba(56,189,248,0.3); }
+        .day-score-dot { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; }
+        .c-light-label { font-size: 8px; font-weight: 700; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 2px; }
         .radar-section { transition: opacity 0.3s, filter 0.3s; }
         .radar-section.disabled { opacity: 0.3; filter: grayscale(1); pointer-events: none; }
         .d-name { font-size:8px; font-weight:800; color:var(--text-muted); margin-bottom:3px; }
@@ -250,6 +252,7 @@
         
         <div class="c-right">
             <div id="t-aller" class="c-time">--</div>
+            <div id="light-aller" class="c-light-label">--</div>
         </div>
     </div>
 
@@ -274,6 +277,7 @@
         
         <div class="c-right">
             <div id="t-retour" class="c-time">--</div>
+            <div id="light-retour" class="c-light-label">--</div>
         </div>
     </div>
 
@@ -418,6 +422,14 @@
             if (!state.weather) return;
             const d=state.weather, now=new Date(), h=now.getHours(), m=now.getMinutes();
 
+            const getDecimalHour = (isoStr) => {
+                if (!isoStr) return 0;
+                const dt = new Date(isoStr);
+                return dt.getHours() + dt.getMinutes() / 60;
+            };
+            const riseH = getDecimalHour(d.daily.sunrise?.[state.day]);
+            const setH  = getDecimalHour(d.daily.sunset?.[state.day]);
+
             document.getElementById('btn-city').innerText = state.config.name;
             document.getElementById('lbl-sync').innerText = "MAJ "+now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
             document.getElementById('lbl-date').innerText = new Date(d.daily.time[state.day]).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase();
@@ -519,6 +531,25 @@
                 pill.style.borderColor = pillColor === 'var(--text-muted)' ? 'rgba(255,255,255,0.12)' : pillColor;
                 arrow.innerText = wa2.arrow;
                 val.innerText   = `${res.avgW.toFixed(0)} km/h ${wa2.label}`;
+
+                // Luminosité du trajet (transitions)
+                let lightLabel = "";
+                let lightIcon = "";
+                let lightColor = "var(--text-muted)";
+                if (e <= riseH || s >= setH) {
+                    lightLabel = "Nuit"; lightIcon = "🌙"; lightColor = "#c084fc"; // Violet clair
+                } else if (s >= riseH && e <= setH) {
+                    lightLabel = "Jour"; lightIcon = "☀"; lightColor = "var(--warn)";
+                } else if (s < riseH && e > riseH) {
+                    lightLabel = "Lever"; lightIcon = "🌗";
+                } else if (s < setH && e > setH) {
+                    lightLabel = "Coucher"; lightIcon = "🌗";
+                }
+                const lEl = document.getElementById(`light-${id}`);
+                if (lEl) {
+                    lEl.innerHTML = `<span>${lightIcon}</span> ${lightLabel}`;
+                    lEl.style.color = lightColor;
+                }
             };
 
             upCard('aller',  state.config.as, state.config.ae);
@@ -529,7 +560,18 @@
                 const box=document.createElement('div'); box.className=`day-box ${i===state.day?'active':''}`;
                 const dt=new Date(d.daily.time[i]), wc=d.daily.weather_code[i];
                 const ico=wc>50?Logic.svg.rain('var(--accent)'):(wc>3?Logic.svg.cloud('var(--text-muted)'):Logic.svg.sun('var(--warn)'));
-                box.innerHTML=`<div class="d-name">${dt.toLocaleDateString('fr-FR',{weekday:'short'}).toUpperCase().slice(0,3)}</div><div style="width:18px">${ico}</div><div class="d-temp">${d.daily.temperature_2m_max[i].toFixed(0)}°</div>`;
+                
+                // Calcul du score météo vélo journalier (Aller & Retour)
+                const resAller = Logic.analyzeChunk(d.hourly, i, state.config.as, state.config.ae);
+                const resRetour = Logic.analyzeChunk(d.hourly, i, state.config.rs, state.config.re);
+                let dotColor = "var(--ok)";
+                if (resAller.color === "var(--danger)" || resRetour.color === "var(--danger)") {
+                    dotColor = "var(--danger)";
+                } else if (resAller.color === "var(--warn)" || resRetour.color === "var(--warn)") {
+                    dotColor = "var(--warn)";
+                }
+
+                box.innerHTML=`<div class="day-score-dot" style="background:${dotColor}"></div><div class="d-name">${dt.toLocaleDateString('fr-FR',{weekday:'short'}).toUpperCase().slice(0,3)}</div><div style="width:18px">${ico}</div><div class="d-temp">${d.daily.temperature_2m_max[i].toFixed(0)}°</div>`;
                 box.onclick=()=>{ state.day=i; render(); };
                 strip.appendChild(box);
             }
@@ -541,7 +583,7 @@
             const ch=`hourly=precipitation,rain,showers,wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m`;
             try {
                 // 1. Récupération météo principale (fonctionne partout)
-                const r1 = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m&daily=weather_code,temperature_2m_max&${ch}&minutely_15=precipitation`);
+                const r1 = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}&minutely_15=precipitation`);
                 state.weather = await r1.json();
                 
                 // 2. Récupération des modèles globaux (fonctionne partout)
@@ -579,7 +621,7 @@
             } catch(e) {
                 console.error("Erreur lors de la récupération, essai en mode dégradé...", e);
                 try {
-                    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m&daily=weather_code,temperature_2m_max&${ch}&minutely_15=precipitation`);
+                    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}&minutely_15=precipitation`);
                     state.weather = await r.json();
                     state.modelsData = null;
                     render();
