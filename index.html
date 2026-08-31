@@ -513,10 +513,42 @@
                 const wa2 = Logic.windArrow(res.avgDir);
                 const pillColor = Logic.windPillColor(res.avgW);
 
+                const formatHour = (decH) => {
+                    const hh = Math.floor(decH);
+                    const mm = Math.round((decH - hh) * 60);
+                    return `${hh.toString().padStart(2,'0')}h${mm.toString().padStart(2,'0')}`;
+                };
+
+                // Limites pour le besoin de phares (lever + 30m, coucher - 30m)
+                const riseLimit = riseH + 0.5;
+                const setLimit  = setH - 0.5;
+
+                let lightLabel = "";
+                let lightIcon = "";
+                let lightColor = "var(--text-muted)";
+                let lightAlert = "";
+
+                if (e <= riseH || s >= setH) {
+                    lightLabel = "Nuit"; lightIcon = "🌙"; lightColor = "#c084fc"; // Violet clair
+                    lightAlert = " · 💡 Phares requis";
+                } else if (s >= riseH && e <= setH) {
+                    lightLabel = "Jour"; lightIcon = "☀"; lightColor = "var(--warn)";
+                } else if (s < riseH && e > riseH) {
+                    lightLabel = `Lever (${formatHour(riseH)})`; lightIcon = "🌗";
+                    if (s < riseLimit) {
+                        lightAlert = ` · 💡 Phares < ${formatHour(riseLimit)}`;
+                    }
+                } else if (s < setH && e > setH) {
+                    lightLabel = `Coucher (${formatHour(setH)})`; lightIcon = "🌗";
+                    if (e > setLimit) {
+                        lightAlert = ` · 💡 Phares > ${formatHour(setLimit)}`;
+                    }
+                }
+
                 document.getElementById(`card-${id}`).style.borderLeftColor = res.color;
                 document.getElementById(`alert-${id}`).innerText  = res.alert;
                 document.getElementById(`alert-${id}`).style.color = res.color;
-                document.getElementById(`desc-${id}`).innerText   = res.desc;
+                document.getElementById(`desc-${id}`).innerText   = res.desc + lightAlert;
                 document.getElementById(`t-${id}`).innerText      = `${s}h–${e}h`;
                 
                 // Température moyenne affichée au centre de la carte
@@ -532,19 +564,6 @@
                 arrow.innerText = wa2.arrow;
                 val.innerText   = `${res.avgW.toFixed(0)} km/h ${wa2.label}`;
 
-                // Luminosité du trajet (transitions)
-                let lightLabel = "";
-                let lightIcon = "";
-                let lightColor = "var(--text-muted)";
-                if (e <= riseH || s >= setH) {
-                    lightLabel = "Nuit"; lightIcon = "🌙"; lightColor = "#c084fc"; // Violet clair
-                } else if (s >= riseH && e <= setH) {
-                    lightLabel = "Jour"; lightIcon = "☀"; lightColor = "var(--warn)";
-                } else if (s < riseH && e > riseH) {
-                    lightLabel = "Lever"; lightIcon = "🌗";
-                } else if (s < setH && e > setH) {
-                    lightLabel = "Coucher"; lightIcon = "🌗";
-                }
                 const lEl = document.getElementById(`light-${id}`);
                 if (lEl) {
                     lEl.innerHTML = `<span>${lightIcon}</span> ${lightLabel}`;
