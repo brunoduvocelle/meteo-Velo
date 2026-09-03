@@ -117,13 +117,42 @@
         }
         .wind-pill-arrow { font-size: 10px; }
 
-        /* ★ NOUVEAU CONTENEUR CENTRAL (Zone Rouge) */
+        /* ★ CONTENEUR CENTRAL (Fiabilité + Température dans la Zone Rouge) */
         .c-center {
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 0 10px;
+            gap: 5px;
+            padding: 0 4px;
             flex-shrink: 0;
+        }
+
+        /* ★ PASTILLE DE FIABILITÉ CIBLÉE TRAJET */
+        .c-conf-badge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.35);
+            border: 1px solid var(--glass-border);
+            border-radius: 5px;
+            padding: 2px 5px;
+            min-width: 44px;
+            text-align: center;
+            transition: border-color 0.3s;
+        }
+        .c-conf-val {
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+        .c-conf-sub {
+            font-size: 7px;
+            font-weight: 700;
+            color: var(--text-muted);
+            line-height: 1;
+            margin-top: 1px;
+            white-space: nowrap;
         }
 
         /* ★ STYLE DE LA TEMPÉRATURE CENTRALE */
@@ -132,10 +161,80 @@
             font-weight: 700;
             color: var(--text-main);
             background: rgba(255,255,255,0.06);
-            padding: 3px 8px;
+            padding: 3px 7px;
             border-radius: 5px;
             border: 1px solid var(--glass-border);
             white-space: nowrap;
+        }
+
+        /* ── OVERLAY DÉTAIL VERTICAL 6 MODÈLES ── */
+        .btn-close-sm {
+            width: 28px; height: 28px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            display: grid; place-items: center;
+            cursor: pointer; font-size: 14px; color: var(--text-main);
+        }
+        .btn-close-sm:hover { background: rgba(255,255,255,0.2); }
+
+        .v-models-legend {
+            display: flex; flex-wrap: wrap; gap: 6px;
+            margin: 6px 0 8px; padding: 6px 8px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px; border: 1px solid var(--glass-border);
+        }
+        .v-legend-item {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 8px; font-weight: 700; color: var(--text-main);
+        }
+        .v-legend-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+
+        .vertical-timeline {
+            display: flex; flex-direction: column; gap: 3px;
+            max-height: 52vh; overflow-y: auto; padding-right: 3px;
+            margin: 4px 0 8px;
+        }
+        .v-row {
+            display: flex; align-items: center; padding: 4px 6px;
+            background: rgba(0,0,0,0.25); border-radius: 6px;
+            border: 1px solid transparent; font-size: 10px;
+            transition: background 0.2s;
+        }
+        .v-row.current-h {
+            border-color: rgba(255,255,255,0.35);
+            background: rgba(255,255,255,0.07);
+        }
+        .v-row.in-commute {
+            background: rgba(56,189,248,0.09);
+            border-left: 3px solid var(--accent);
+        }
+        .v-row-hour {
+            width: 28px; font-family: monospace; font-size: 10px;
+            font-weight: 800; color: var(--text-muted); flex-shrink: 0;
+        }
+        .v-bars-wrap {
+            display: flex; align-items: flex-end; gap: 3px;
+            height: 22px; flex: 1; padding: 0 6px;
+            border-left: 1px solid rgba(255,255,255,0.08);
+            border-right: 1px solid rgba(255,255,255,0.08);
+            margin: 0 6px;
+        }
+        .v-model-bar {
+            flex: 1; max-width: 8px; border-radius: 1px 1px 0 0;
+            min-height: 2px; transition: height 0.2s;
+        }
+        .v-row-meta {
+            font-size: 9px; font-family: monospace;
+            width: 78px; text-align: right; flex-shrink: 0; font-weight: 600;
+        }
+        .v-divider-commute {
+            display: flex; align-items: center; gap: 6px;
+            margin: 5px 0 2px; font-size: 8px; font-weight: 800;
+            color: var(--accent); letter-spacing: 0.5px;
+        }
+        .v-divider-commute::before, .v-divider-commute::after {
+            content: ''; flex: 1; height: 1px; background: var(--accent-glow);
         }
 
         .c-right { display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0; margin-left:4px; }
@@ -188,21 +287,13 @@
     </div>
 
     <div class="section-header">
-        FIABILITÉ &amp; VENT 🚴
+        VENT 🚴
         <span id="lbl-sync" style="font-size:8px;opacity:0.6">--:--</span>
     </div>
     <div class="compact-strip">
-        <div class="conf-compact">
-            <div class="conf-top">
-                <span id="conf-lbl" class="conf-lbl">INDICE FIABILITÉ</span>
-                <span id="conf-score" class="conf-score" style="color:var(--ok)">--%</span>
-            </div>
-            <div class="conf-track"><div id="conf-fill" class="conf-fill" style="width:0%;background:var(--ok)"></div></div>
-            <div id="conf-sub" class="conf-sub">Calcul...</div>
-        </div>
-        <div id="wind-compact" class="wind-compact">
+        <div id="wind-compact" class="wind-compact" style="flex:1">
             <div class="wind-c-left">
-                <span class="wind-c-lbl">VENT</span>
+                <span class="wind-c-lbl">CONDITION VENT</span>
                 <span id="wind-status" class="wind-c-status">--</span>
                 <span id="wind-sub" class="wind-c-sub">--</span>
             </div>
@@ -214,8 +305,11 @@
         </div>
     </div>
 
-    <div class="section-header">PLUIE (24H)</div>
-    <div class="timeline-container">
+    <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>PLUIE (24H)</span>
+        <span style="font-size:8px;color:var(--accent);cursor:pointer;font-weight:700;" onclick="window.ui.toggleRainDetails(true)">DÉTAIL MODÈLES ↗</span>
+    </div>
+    <div class="timeline-container" id="timeline-trigger" style="cursor:pointer;" title="Cliquer pour voir le détail des modèles">
         <div id="timeline-box" class="timeline-box"></div>
         <div class="time-labels"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>
     </div>
@@ -231,7 +325,7 @@
 
     <div class="section-header">TRAJETS (Configurer)</div>
 
-    <!-- Carte ALLER avec la température au centre -->
+    <!-- Carte ALLER avec fiabilité et température au centre -->
     <div id="card-aller" class="commute-card">
         <div class="c-left">
             <span class="c-label">ALLER 🚴</span>
@@ -245,8 +339,12 @@
             </div>
         </div>
         
-        <!-- ★ Température moyenne au centre -->
+        <!-- ★ Fiabilité ciblée Aller + Température moyenne au centre -->
         <div class="c-center">
+            <div id="conf-badge-aller" class="c-conf-badge" title="Fiabilité des modèles sur l'Aller">
+                <span id="conf-val-aller" class="c-conf-val" style="color:var(--ok)">--%</span>
+                <span id="conf-sub-aller" class="c-conf-sub">-- mod.</span>
+            </div>
             <div id="temp-aller" class="c-temp-mid">--°C</div>
         </div>
         
@@ -256,7 +354,7 @@
         </div>
     </div>
 
-    <!-- Carte RETOUR avec la température au centre -->
+    <!-- Carte RETOUR avec fiabilité et température au centre -->
     <div id="card-retour" class="commute-card">
         <div class="c-left">
             <span class="c-label">RETOUR 🚴</span>
@@ -270,8 +368,12 @@
             </div>
         </div>
         
-        <!-- ★ Température moyenne au centre -->
+        <!-- ★ Fiabilité ciblée Retour + Température moyenne au centre -->
         <div class="c-center">
+            <div id="conf-badge-retour" class="c-conf-badge" title="Fiabilité des modèles sur le Retour">
+                <span id="conf-val-retour" class="c-conf-val" style="color:var(--ok)">--%</span>
+                <span id="conf-sub-retour" class="c-conf-sub">-- mod.</span>
+            </div>
             <div id="temp-retour" class="c-temp-mid">--°C</div>
         </div>
         
@@ -301,11 +403,34 @@
         <button class="btn-act" onclick="window.ui.toggleConfig(false)">VALIDER</button>
     </div>
 
+    <div id="ov-rain-details" class="overlay">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div class="section-header" style="color:var(--accent); margin:0; font-size:12px;">ANALYSE DÉTAILLÉE DES MODÈLES</div>
+            <div class="btn-close-sm" onclick="window.ui.toggleRainDetails(false)">✕</div>
+        </div>
+        <div id="models-legend" class="v-models-legend"></div>
+        <div style="font-size:8px; color:var(--text-muted); margin-bottom:6px; display:flex; justify-content:space-between;">
+            <span>TIMELINE 24H · 1 TRAIT FIN PAR MODÈLE</span>
+            <span id="lbl-rain-day" style="font-weight:700; color:var(--accent);">--</span>
+        </div>
+        <div id="vertical-timeline" class="vertical-timeline"></div>
+        <button class="btn-act" style="background:transparent;color:white;border:1px solid rgba(255,255,255,0.2);margin-top:6px;" onclick="window.ui.toggleRainDetails(false)">RETOUR</button>
+    </div>
+
 </div>
 <script>
 {
     const DEFAULT_COMMUTE = { matin_aller_start:8, matin_aller_end:10, soir_retour_start:17, soir_retour_end:19 };
     const WIND_THRESHOLDS = { ok:20, warn:35, danger:50 };
+
+    const ALL_MODELS = [
+        { key: 'precipitation_meteofrance_arome_france', name: 'AROME', region: 'FR', color: '#00d2ff' }, /* Cyan Fluo */
+        { key: 'precipitation_meteofrance_arpege_europe', name: 'ARPEGE', region: 'EU', color: '#ff49db' }, /* Magenta / Rose Fluo */
+        { key: 'precipitation_icon_seamless', name: 'ICON', region: 'DE', color: '#00e676' }, /* Vert Émeraude */
+        { key: 'precipitation_ecmwf_ifs025', name: 'ECMWF', region: 'EU', color: '#ff9100' }, /* Orange Fluo */
+        { key: 'precipitation_gfs_seamless', name: 'GFS', region: 'US', color: '#ff3333' }, /* Rouge Vif */
+        { key: 'precipitation_gem_global', name: 'GEM', region: 'CA', color: '#ffffff' }  /* Blanc Pur */
+    ];
 
     const Logic = {
 
@@ -368,36 +493,60 @@
             return 'var(--text-muted)';
         },
 
-        calcConfidence: (modelsData, start, len) => {
-            const activeSlices = [];
-            for (const arr of modelsData) {
-                if (arr && arr.length > start) {
-                    const slice = arr.slice(start, start + len);
-                    const hasData = slice.some(v => v !== null && v !== undefined);
-                    if (hasData) {
-                        activeSlices.push(slice.map(v => v || 0));
-                    }
+        getActiveModels: (modelsData, dayIdx) => {
+            if (!modelsData || !modelsData.hourly) return [];
+            const mh = modelsData.hourly;
+            const start = dayIdx * 24;
+            return ALL_MODELS.filter(m => {
+                const arr = mh[m.key];
+                if (!arr || arr.length < start + 24) return false;
+                for (let i = 0; i < 24; i++) {
+                    const v = arr[start + i];
+                    if (v !== null && v !== undefined) return true;
                 }
+                return false;
+            });
+        },
+
+        calcConfidence: (modelsData, activeModels, start, len) => {
+            if (!modelsData || !modelsData.hourly || !activeModels || activeModels.length < 2 || len <= 0) {
+                return { score: null, sub: "Indisponible", activeCount: activeModels ? activeModels.length : 0 };
             }
+            const mh = modelsData.hourly;
+            const K = activeModels.length;
+            const slices = activeModels.map(m => {
+                const arr = mh[m.key] || [];
+                const sl = [];
+                for (let i = 0; i < len; i++) {
+                    sl.push(arr[start + i] ?? 0);
+                }
+                return sl;
+            });
 
-            const K = activeSlices.length;
-            if (K < 2) return { score: 50, sub: "Données insuffisantes", activeCount: 0 };
-
-            let totDiff = 0;
+            let totalDisagreement = 0;
             for (let i = 0; i < len; i++) {
+                let rainCount = 0;
                 let hourDiffSum = 0;
-                let pairCount = 0;
+                let pairs = 0;
                 for (let m1 = 0; m1 < K; m1++) {
+                    if (slices[m1][i] > 0.05) rainCount++;
                     for (let m2 = m1 + 1; m2 < K; m2++) {
-                        hourDiffSum += Math.abs(activeSlices[m1][i] - activeSlices[m2][i]);
-                        pairCount++;
+                        hourDiffSum += Math.abs(slices[m1][i] - slices[m2][i]);
+                        pairs++;
                     }
                 }
-                totDiff += (hourDiffSum / pairCount);
+                const avgPairDiff = pairs > 0 ? (hourDiffSum / pairs) : 0;
+                // Désaccord d'occurrence : 0 si unanimes sec ou pluie, jusqu'à 1 si 50/50
+                const minCount = Math.min(rainCount, K - rainCount);
+                const eventPenalty = minCount / (K / 2);
+
+                // Pénalité combinée qualitative (averse/sec) + quantitative (écart en mm)
+                const hourDisagreement = (eventPenalty * 55) + Math.min(45, avgPairDiff * 35);
+                totalDisagreement += hourDisagreement;
             }
 
-            const avgDiff = totDiff / len;
-            const score = Math.max(0, Math.min(100, Math.round(100 - avgDiff * 40)));
+            const avgDisagreement = totalDisagreement / len;
+            const score = Math.max(0, Math.min(100, Math.round(100 - avgDisagreement)));
             return {
                 score,
                 sub: score >= 80 ? "Fiable ✓" : (score >= 50 ? "Incertitude" : "Peu fiable"),
@@ -445,31 +594,6 @@
                 dot.style.background=r.color; dot.style.boxShadow=`0 0 7px ${r.color}`;
                 document.getElementById(['ico-m','ico-mi','ico-s'][i]).innerHTML=r.isRain?Logic.svg.rain('var(--accent)'):(wCode>3?Logic.svg.cloud('var(--text-muted)'):Logic.svg.sun('var(--warn)'));
             });
-
-            if (state.modelsData && state.modelsData.hourly) {
-                const mh = state.modelsData.hourly;
-                const modelsPrecip = [
-                    mh.precipitation_meteofrance_arome_france,
-                    mh.precipitation_icon_seamless,
-                    mh.precipitation_ecmwf_ifs025,
-                    mh.precipitation_meteofrance_arpege_europe,
-                    mh.precipitation_gfs_seamless,
-                    mh.precipitation_gem_global
-                ];
-                const conf = Logic.calcConfidence(modelsPrecip, state.day * 24, 24);
-                const cc = conf.score >= 80 ? 'var(--ok)' : (conf.score >= 50 ? 'var(--warn)' : 'var(--danger)');
-                document.getElementById('conf-lbl').innerText = `FIABILITÉ (${conf.activeCount} MODÈLES)`;
-                document.getElementById('conf-score').innerText = conf.score + '%';
-                document.getElementById('conf-score').style.color = cc;
-                document.getElementById('conf-fill').style.width = conf.score + '%';
-                document.getElementById('conf-fill').style.background = cc;
-                document.getElementById('conf-sub').innerText = conf.sub;
-            } else {
-                document.getElementById('conf-lbl').innerText = 'INDICE FIABILITÉ';
-                document.getElementById('conf-score').innerText = '--%';
-                document.getElementById('conf-fill').style.width = '0%';
-                document.getElementById('conf-sub').innerText = "Indisponible";
-            }
 
             const wi=state.day*24+(state.day===0?h:9);
             const spd=d.hourly.wind_speed_10m?.[wi]||0;
@@ -554,6 +678,29 @@
                 // Température moyenne affichée au centre de la carte
                 document.getElementById(`temp-${id}`).innerText   = `${res.avgT.toFixed(1)}°C`;
 
+                // Pastille de fiabilité ciblée trajet
+                const activeModels = Logic.getActiveModels(state.modelsData, state.day);
+                const len = Math.max(1, e - s);
+                const conf = Logic.calcConfidence(state.modelsData, activeModels, state.day * 24 + s, len);
+                const confBadge = document.getElementById(`conf-badge-${id}`);
+                const confVal   = document.getElementById(`conf-val-${id}`);
+                const confSub   = document.getElementById(`conf-sub-${id}`);
+
+                if (conf && conf.score !== null) {
+                    const cc = conf.score >= 80 ? 'var(--ok)' : (conf.score >= 50 ? 'var(--warn)' : 'var(--danger)');
+                    confBadge.style.display = 'flex';
+                    confBadge.style.borderColor = cc;
+                    confVal.innerText = conf.score + '%';
+                    confVal.style.color = cc;
+                    confSub.innerText = `${conf.activeCount} mod.`;
+                } else {
+                    confBadge.style.display = 'flex';
+                    confBadge.style.borderColor = 'var(--glass-border)';
+                    confVal.innerText = '--%';
+                    confVal.style.color = 'var(--text-muted)';
+                    confSub.innerText = 'Calcul...';
+                }
+
                 // Pastille vent
                 const pill  = document.getElementById(`wind-pill-${id}`);
                 const arrow = document.getElementById(`wind-pill-arrow-${id}`);
@@ -594,6 +741,8 @@
                 box.onclick=()=>{ state.day=i; render(); };
                 strip.appendChild(box);
             }
+
+            renderRainDetails();
         };
 
         const fetchW = async () => {
@@ -674,8 +823,142 @@
             fetchW();
         };
 
+        const renderRainDetails = () => {
+            const ov = document.getElementById('ov-rain-details');
+            if (!ov || !ov.classList.contains('visible')) return;
+            if (!state.weather) return;
+
+            const d = state.weather;
+            const now = new Date();
+            const currentH = now.getHours();
+            const dt = new Date(d.daily.time[state.day]);
+            const dayLabel = dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase();
+            document.getElementById('lbl-rain-day').innerText = dayLabel + (state.day === 0 ? " (AUJOURD'HUI)" : "");
+
+            const activeModels = Logic.getActiveModels(state.modelsData, state.day);
+            const legendEl = document.getElementById('models-legend');
+            legendEl.innerHTML = '';
+            if (activeModels.length === 0) {
+                legendEl.innerHTML = '<div style="font-size:9px;color:var(--text-muted);padding:4px;">Modèles en cours de chargement...</div>';
+            } else {
+                activeModels.forEach(m => {
+                    const item = document.createElement('div');
+                    item.className = 'v-legend-item';
+                    item.innerHTML = `<div class="v-legend-dot" style="background:${m.color}"></div><span>${m.name} <small style="opacity:0.6">${m.region}</small></span>`;
+                    legendEl.appendChild(item);
+                });
+            }
+
+            const listEl = document.getElementById('vertical-timeline');
+            listEl.innerHTML = '';
+
+            const as = state.config.as, ae = state.config.ae;
+            const rs = state.config.rs, re = state.config.re;
+            const mh = state.modelsData?.hourly || {};
+            const baseIdx = state.day * 24;
+
+            let targetScrollRow = null;
+
+            for (let h = 0; h < 24; h++) {
+                if (h === as) {
+                    const div = document.createElement('div');
+                    div.className = 'v-divider-commute';
+                    div.innerHTML = `🚴 Début Aller (${as}h)`;
+                    listEl.appendChild(div);
+                }
+                if (h === rs) {
+                    const div = document.createElement('div');
+                    div.className = 'v-divider-commute';
+                    div.innerHTML = `🚴 Début Retour (${rs}h)`;
+                    listEl.appendChild(div);
+                }
+
+                const inAller  = (h >= as && h < ae);
+                const inRetour = (h >= rs && h < re);
+                const isCurrent = (state.day === 0 && h === currentH);
+
+                const row = document.createElement('div');
+                row.className = `v-row ${isCurrent ? 'current-h' : ''} ${inAller || inRetour ? 'in-commute' : ''}`;
+
+                if (isCurrent) targetScrollRow = row;
+
+                const hourEl = document.createElement('div');
+                hourEl.className = 'v-row-hour';
+                hourEl.innerText = `${h.toString().padStart(2, '0')}h`;
+                row.appendChild(hourEl);
+
+                const barsWrap = document.createElement('div');
+                barsWrap.className = 'v-bars-wrap';
+
+                let rainCount = 0;
+                let maxP = 0;
+
+                activeModels.forEach(m => {
+                    const arr = mh[m.key] || [];
+                    const p = arr[baseIdx + h] || 0;
+                    if (p > 0.05) rainCount++;
+                    maxP = Math.max(maxP, p);
+
+                    const bar = document.createElement('div');
+                    bar.className = 'v-model-bar';
+                    bar.style.background = m.color;
+
+                    if (p > 0.05) {
+                        const hPx = Math.min(22, Math.max(4, Math.round(p * 8 + 3)));
+                        bar.style.height = `${hPx}px`;
+                        bar.style.boxShadow = `0 0 4px ${m.color}88`;
+                    } else {
+                        bar.style.height = '2px';
+                        bar.style.opacity = '0.25';
+                    }
+                    bar.title = `${m.name}: ${p.toFixed(2)} mm`;
+                    barsWrap.appendChild(bar);
+                });
+
+                row.appendChild(barsWrap);
+
+                const metaEl = document.createElement('div');
+                metaEl.className = 'v-row-meta';
+                if (activeModels.length === 0) {
+                    const pDef = d.hourly?.precipitation?.[baseIdx + h] || 0;
+                    metaEl.innerText = pDef > 0.01 ? `${pDef.toFixed(1)}mm` : 'Sec';
+                    metaEl.style.color = pDef > 0.01 ? 'var(--accent)' : 'var(--text-muted)';
+                } else if (rainCount === 0) {
+                    metaEl.innerText = 'Sec ✓';
+                    metaEl.style.color = 'var(--text-muted)';
+                } else {
+                    metaEl.innerText = `${rainCount}/${activeModels.length} · ${maxP.toFixed(1)}mm`;
+                    metaEl.style.color = rainCount >= Math.ceil(activeModels.length / 2) ? 'var(--danger)' : 'var(--warn)';
+                }
+                row.appendChild(metaEl);
+
+                listEl.appendChild(row);
+
+                if (h === ae - 1) {
+                    const div = document.createElement('div');
+                    div.className = 'v-divider-commute';
+                    div.style.opacity = '0.6';
+                    div.innerHTML = `🏁 Fin Aller (${ae}h)`;
+                    listEl.appendChild(div);
+                }
+                if (h === re - 1) {
+                    const div = document.createElement('div');
+                    div.className = 'v-divider-commute';
+                    div.style.opacity = '0.6';
+                    div.innerHTML = `🏁 Fin Retour (${re}h)`;
+                    listEl.appendChild(div);
+                }
+            }
+
+            if (targetScrollRow) {
+                setTimeout(() => {
+                    targetScrollRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 60);
+            }
+        };
+
         return {
-            fetch:fetchW, useGeo, state, render,
+            fetch:fetchW, useGeo, state, render, renderRainDetails,
             adj:(k,v)=>{ let n=state.config[k]+v; if(n>23)n=0; if(n<0)n=23; state.config[k]=n; document.getElementById(`v-${k}`).innerText=n.toString().padStart(2,'0'); }
         };
     })();
@@ -683,6 +966,7 @@
     window.ui = {
         toggleSearch: s=>{ document.getElementById('ov-search').classList.toggle('visible',s); if(s){ document.getElementById('inp-city').value=''; document.getElementById('inp-city').focus(); } },
         toggleConfig: s=>{ if(s)['as','ae','rs','re'].forEach(k=>document.getElementById(`v-${k}`).innerText=window.app.state.config[k].toString().padStart(2,'0')); else window.app.render(); document.getElementById('ov-config').classList.toggle('visible',s); },
+        toggleRainDetails: s=>{ document.getElementById('ov-rain-details').classList.toggle('visible',s); if(s) window.app.renderRainDetails(); },
         search: async q=>{ if(q.length<3)return; try{ const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr&format=json`); const d=await r.json(); const l=document.getElementById('lst-results'); l.innerHTML=''; (d.results||[]).forEach(c=>{ const div=document.createElement('div'); div.className='res-row'; div.innerHTML=`<b>${c.name}</b> <small style="opacity:0.5">${c.admin1||''}</small>`; div.onclick=()=>{ window.app.state.config={...window.app.state.config,lat:c.latitude,lon:c.longitude,name:c.name.toUpperCase()}; window.app.fetch(); window.ui.toggleSearch(false); }; l.appendChild(div); }); }catch(e){} }
     };
 
@@ -692,6 +976,7 @@
     document.getElementById('inp-city').oninput=e=>{ clearTimeout(st); st=setTimeout(()=>window.ui.search(e.target.value),400); };
     document.getElementById('card-aller').onclick=()=>window.ui.toggleConfig(true);
     document.getElementById('card-retour').onclick=()=>window.ui.toggleConfig(true);
+    document.getElementById('timeline-trigger').onclick=()=>window.ui.toggleRainDetails(true);
     window.onload=()=>{ ['as','ae','rs','re'].forEach(k=>document.getElementById(`v-${k}`).innerText=window.app.state.config[k].toString().padStart(2,'0')); window.app.useGeo(); };
 }
 </script>
