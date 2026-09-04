@@ -58,7 +58,16 @@
 
         .section-header { display:flex; justify-content:space-between; align-items:center; font-size:9px; font-weight:800; color:var(--text-muted); margin:8px 0 4px; text-transform:uppercase; letter-spacing:1.2px; }
 
-        .compact-strip { display: flex; gap: 6px; margin-bottom: 8px; }
+        .compact-strip {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(56,189,248,0.25);
+            border-radius: 10px;
+            padding: 4px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
         
         /* CADRE GAUCHE : CONFORT & ÉQUIPEMENT (55%) */
         .comfort-card {
@@ -71,12 +80,15 @@
             flex-direction: column;
             justify-content: space-between;
             gap: 2px;
+            min-height: 56px;
+            box-sizing: border-box;
         }
         .comfort-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-size: 8px;
+            white-space: nowrap;
         }
         .comfort-lbl { font-weight: 800; color: var(--text-muted); }
         .comfort-val { font-weight: 800; font-size: 10px; color: var(--text-main); font-family: monospace; }
@@ -92,6 +104,8 @@
             flex-direction: column;
             justify-content: space-between;
             gap: 2px;
+            min-height: 56px;
+            box-sizing: border-box;
         }
         .wind-curve-header { display: flex; justify-content: space-between; align-items: center; }
         .wind-sparkline-wrap {
@@ -118,10 +132,13 @@
         /* ── CARTES TRAJETS ── */
         .commute-card {
             background:linear-gradient(145deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));
-            border:1px solid var(--glass-border); border-radius:10px;
-            padding:7px 12px; margin-bottom:6px; cursor:pointer;
+            border-top:1px solid var(--glass-border);
+            border-right:1px solid var(--glass-border);
             border-left:3px solid var(--text-muted);
-            display:flex; justify-content:space-between; align-items:center; transition:0.2s;
+            border-bottom:3px solid var(--text-muted);
+            border-radius:10px;
+            padding:7px 12px; margin-bottom:6px; cursor:pointer;
+            display:flex; justify-content:space-between; align-items:center; transition:border-color 0.3s, background 0.2s, transform 0.2s;
         }
         .commute-card:hover { background:rgba(255,255,255,0.07); transform:translateY(-1px); }
         
@@ -805,6 +822,7 @@
                 }
 
                 document.getElementById(`card-${id}`).style.borderLeftColor = res.color;
+                document.getElementById(`card-${id}`).style.borderBottomColor = res.color;
                 document.getElementById(`alert-${id}`).innerText  = res.alert;
                 document.getElementById(`alert-${id}`).style.color = res.color;
                 document.getElementById(`desc-${id}`).innerText   = res.desc + lightAlert;
