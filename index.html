@@ -845,9 +845,11 @@
             if (!hourly || !hourly.weather_code) return fallbackCode || 0;
             const startH = Math.max(0, Math.floor(riseH || 8));
             const endH = Math.min(23, Math.ceil(setH || 19));
+            const totalHours = Math.max(1, endH - startH + 1);
             const offset = dayIdx * 24;
 
-            let totalP = 0, rainHours = 0, maxP = 0;
+            let totalP = 0, rainHours = 0, heavyRainHours = 0, maxP = 0;
+            let thunderHours = 0, snowHours = 0;
             const codeCounts = {};
 
             for (let h = startH; h <= endH; h++) {
@@ -858,34 +860,56 @@
                     totalP += p;
                     rainHours++;
                 }
+                if (p >= 1.5) {
+                    heavyRainHours++;
+                }
                 maxP = Math.max(maxP, p);
                 if (wc !== undefined) {
                     codeCounts[wc] = (codeCounts[wc] || 0) + 1;
+                    if (wc >= 95) thunderHours++;
+                    if ((wc >= 71 && wc <= 77) || wc === 85 || wc === 86) snowHours++;
                 }
             }
 
             const sunCount = codeCounts[0] || 0;
-            const cloudCount = codeCounts[3] || 0;
             const partlyCount = (codeCounts[1] || 0) + (codeCounts[2] || 0);
-            const hasSunLight = (sunCount + partlyCount) > 0;
-            const hasRain = rainHours >= 1 || totalP > 0.1 || maxP > 0.1;
+            const cloudCount = (codeCounts[3] || 0) + (codeCounts[45] || 0) + (codeCounts[48] || 0);
+            const dryHours = totalHours - rainHours;
 
-            // Pluie et soleil dans la même journée (Averses et belles éclaircies)
-            if (hasSunLight && hasRain) {
-                return 80; // Icône sunCloudRain (Pluie et soleil)
+            // 1. Phénomènes orageux notables en journée (>= 2h d'orages)
+            if (thunderHours >= 2) {
+                return 95; // Orage
             }
 
-            // Si pluie continue sans aucun soleil (ciel bouché)
-            if (hasRain && !hasSunLight && cloudCount > 0) {
-                return maxP > 1.5 ? 65 : 61;
+            // 2. Épisodes neigeux
+            if (snowHours >= 2) {
+                return 73; // Neige
             }
 
-            // Nuages et ensoleillement diurne sec
-            if (partlyCount > 0 || (sunCount > 0 && cloudCount > 0)) {
-                return cloudCount > (sunCount + partlyCount) * 2 ? 3 : 2;
+            // 3. Pluie continue ou dominante en journée (>= 50% du temps diurne ou fortes pluies répétées)
+            // Évite d'afficher "soleil et pluie" si le ciel est saturé d'eau toute la journée
+            if (rainHours >= totalHours * 0.5 || heavyRainHours >= 3 || (rainHours >= 4 && totalP >= 10)) {
+                if (heavyRainHours >= 2 || maxP >= 2.0 || totalP >= 15) {
+                    return 65; // Pluie forte continue
+                }
+                return 63; // Pluie continue modérée
             }
-            if (cloudCount > sunCount) return 3;
-            if (sunCount > 0) return 0;
+
+            // 4. Averses avec réelles éclaircies / soleil diurne (au moins 3h sèches et présence avérée de soleil)
+            const genuineSunLight = (sunCount >= 2 || (sunCount + partlyCount >= 3) || dryHours >= 4);
+            if (rainHours >= 1 && genuineSunLight) {
+                return 80; // Averses et soleil (sunCloudRain)
+            }
+
+            // 5. Pluie intermittente sous ciel gris / bouché sans véritable ensoleillement
+            if (rainHours >= 1) {
+                return maxP > 1.2 ? 63 : 61; // Pluie / bruine
+            }
+
+            // 6. Journée sèche : ciel dégagé, voilé ou couvert
+            if (sunCount >= totalHours * 0.5) return 0; // Plein soleil
+            if (sunCount + partlyCount > cloudCount) return partlyCount > 0 ? 2 : 1; // Éclaircies
+            if (cloudCount > 0) return 3; // Ciel couvert
 
             let bestCode = fallbackCode || 0;
             let maxFreq = -1;
