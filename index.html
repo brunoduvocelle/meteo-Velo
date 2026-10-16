@@ -150,77 +150,89 @@
             border-left:3px solid var(--text-muted);
             border-bottom:3px solid var(--text-muted);
             border-radius:10px;
-            padding:7px 12px; margin-bottom:6px; cursor:pointer;
+            padding:6px 12px; margin-bottom:6px; cursor:pointer;
+            height:56px; min-height:56px; max-height:56px; box-sizing:border-box;
             display:flex; justify-content:space-between; align-items:center; transition:border-color 0.3s, background 0.2s, transform 0.2s;
         }
         .commute-card:hover { background:rgba(255,255,255,0.07); transform:translateY(-1px); }
         
         .c-left { display:flex; flex-direction:column; gap:1px; flex:1; min-width: 0; }
         .c-label { font-size:9px; font-weight:800; color:var(--text-muted); }
-        .c-status { font-size:13px; font-weight:800; }
+        .c-status { font-size:13px; font-weight:800; line-height:1.2; }
 
         /* Ligne desc + pastille vent */
-        .c-bottom { display:flex; align-items:center; gap:6px; margin-top:1px; }
-        .c-desc { font-size:9px; color:var(--text-muted); opacity:0.8; }
+        .c-bottom { display:flex; align-items:center; gap:6px; margin-top:2px; }
+        .c-desc { font-size:9.5px; color:var(--text-muted); opacity:0.9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-        /* PASTILLE VENT dans la carte trajet */
+        /* PASTILLE VENT dans la carte trajet : compacte et superposée (Vitesse en haut, Direction en bas) */
         .wind-pill {
-            display: inline-flex; align-items: center; gap: 3px;
+            display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
             background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 4px; padding: 1px 5px;
-            font-size: 9px; font-weight: 700; font-family: monospace;
-            white-space: nowrap; flex-shrink: 0;
+            border-radius: 4px; padding: 2px 5px;
+            font-size: 8.5px; font-weight: 700; font-family: monospace;
+            white-space: nowrap; flex-shrink: 0; min-width: 48px; box-sizing: border-box;
         }
+        .wind-pill-top { display: flex; align-items: center; gap: 2px; line-height: 1.1; }
         .wind-pill-arrow { font-size: 10px; }
+        .wind-pill-dir { font-size: 7.5px; font-weight: 800; color: var(--text-muted); opacity: 0.9; line-height: 1; margin-top: 1px; }
 
-        /* ★ CONTENEUR CENTRAL (Fiabilité + Température dans la Zone Rouge) */
+        /* ★ CONTENEUR CENTRAL (Température + Fiabilité superposées, à côté de la pastille de vent) */
         .c-center {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 5px;
-            padding: 0 4px;
+            gap: 6px;
+            padding: 0 6px;
             flex-shrink: 0;
+        }
+        .c-metrics-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
+        /* ★ STYLE DE LA TEMPÉRATURE CENTRALE */
+        .c-temp-mid {
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--text-main);
+            background: rgba(255,255,255,0.08);
+            padding: 1px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--glass-border);
+            white-space: nowrap;
+            line-height: 1.2;
+            text-align: center;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         /* ★ PASTILLE DE FIABILITÉ CIBLÉE TRAJET */
         .c-conf-badge {
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
+            gap: 3px;
             background: rgba(0,0,0,0.35);
             border: 1px solid var(--glass-border);
-            border-radius: 5px;
-            padding: 2px 5px;
-            min-width: 44px;
+            border-radius: 4px;
+            padding: 1px 4px;
             text-align: center;
             transition: border-color 0.3s;
+            white-space: nowrap;
         }
         .c-conf-val {
-            font-size: 11px;
+            font-size: 9.5px;
             font-weight: 800;
-            line-height: 1.1;
+            line-height: 1;
         }
         .c-conf-sub {
-            font-size: 7px;
+            font-size: 7.5px;
             font-weight: 700;
             color: var(--text-muted);
             line-height: 1;
-            margin-top: 1px;
-            white-space: nowrap;
-        }
-
-        /* ★ STYLE DE LA TEMPÉRATURE CENTRALE */
-        .c-temp-mid {
-            font-size: 13px;
-            font-weight: 700;
-            color: var(--text-main);
-            background: rgba(255,255,255,0.06);
-            padding: 3px 7px;
-            border-radius: 5px;
-            border: 1px solid var(--glass-border);
-            white-space: nowrap;
         }
 
         /* ── OVERLAY DÉTAIL VERTICAL 6 MODÈLES ── */
@@ -406,20 +418,25 @@
             <span id="alert-aller" class="c-status">--</span>
             <div class="c-bottom">
                 <span id="desc-aller" class="c-desc">--</span>
-                <span id="wind-pill-aller" class="wind-pill" style="display:none">
-                    <span id="wind-pill-arrow-aller" class="wind-pill-arrow">➤</span>
-                    <span id="wind-pill-val-aller">--</span>
-                </span>
             </div>
         </div>
         
-        <!-- ★ Fiabilité ciblée Aller + Température moyenne au centre -->
+        <!-- ★ Bloc central : Température + Fiabilité superposées et Pastille Vent à droite -->
         <div class="c-center">
-            <div id="conf-badge-aller" class="c-conf-badge" title="Fiabilité des modèles sur l'Aller">
-                <span id="conf-val-aller" class="c-conf-val" style="color:var(--ok)">--%</span>
-                <span id="conf-sub-aller" class="c-conf-sub">-- mod.</span>
+            <div class="c-metrics-stack">
+                <div id="temp-aller" class="c-temp-mid">--°C</div>
+                <div id="conf-badge-aller" class="c-conf-badge" title="Fiabilité des modèles sur l'Aller">
+                    <span id="conf-val-aller" class="c-conf-val" style="color:var(--ok)">--%</span>
+                    <span id="conf-sub-aller" class="c-conf-sub">-- mod.</span>
+                </div>
             </div>
-            <div id="temp-aller" class="c-temp-mid">--°C</div>
+            <span id="wind-pill-aller" class="wind-pill" style="display:none">
+                <div class="wind-pill-top">
+                    <span id="wind-pill-arrow-aller" class="wind-pill-arrow">➤</span>
+                    <span id="wind-pill-val-aller">--</span>
+                </div>
+                <div id="wind-pill-dir-aller" class="wind-pill-dir">--</div>
+            </span>
         </div>
         
         <div class="c-right">
@@ -435,20 +452,25 @@
             <span id="alert-retour" class="c-status">--</span>
             <div class="c-bottom">
                 <span id="desc-retour" class="c-desc">--</span>
-                <span id="wind-pill-retour" class="wind-pill" style="display:none">
-                    <span id="wind-pill-arrow-retour" class="wind-pill-arrow">➤</span>
-                    <span id="wind-pill-val-retour">--</span>
-                </span>
             </div>
         </div>
         
-        <!-- ★ Fiabilité ciblée Retour + Température moyenne au centre -->
+        <!-- ★ Bloc central : Température + Fiabilité superposées et Pastille Vent à droite -->
         <div class="c-center">
-            <div id="conf-badge-retour" class="c-conf-badge" title="Fiabilité des modèles sur le Retour">
-                <span id="conf-val-retour" class="c-conf-val" style="color:var(--ok)">--%</span>
-                <span id="conf-sub-retour" class="c-conf-sub">-- mod.</span>
+            <div class="c-metrics-stack">
+                <div id="temp-retour" class="c-temp-mid">--°C</div>
+                <div id="conf-badge-retour" class="c-conf-badge" title="Fiabilité des modèles sur le Retour">
+                    <span id="conf-val-retour" class="c-conf-val" style="color:var(--ok)">--%</span>
+                    <span id="conf-sub-retour" class="c-conf-sub">-- mod.</span>
+                </div>
             </div>
-            <div id="temp-retour" class="c-temp-mid">--°C</div>
+            <span id="wind-pill-retour" class="wind-pill" style="display:none">
+                <div class="wind-pill-top">
+                    <span id="wind-pill-arrow-retour" class="wind-pill-arrow">➤</span>
+                    <span id="wind-pill-val-retour">--</span>
+                </div>
+                <div id="wind-pill-dir-retour" class="wind-pill-dir">--</div>
+            </span>
         </div>
         
         <div class="c-right">
@@ -641,32 +663,31 @@
                 // 1. ROUGE : Fortes averses / Pluie soutenue (Prendre la voiture)
                 if (highestRain >= 1.5 || medianRain >= 1.0) {
                     alert = "PLUIE FORTE";
-                    desc  = `Averse forte (${highestRain.toFixed(1)} mm) · Prendre la voiture`;
+                    desc  = "Prends la voiture";
                     color = "var(--danger)";
                     isRain = true;
                 }
-                // 2. JAUNE : Risque de pluie avéré / Pluie modérée (K-Way)
+                // 2. JAUNE/ORANGE : Risque de pluie avéré / Pluie modérée (K-Way requis)
                 else if (rainCount >= Math.ceil(totalActiveModels / 2)) {
                     alert = "RISQUE PLUIE";
-                    desc  = `K-Way requis (${rainCount}/${totalActiveModels} mod. · ${highestRain.toFixed(1)} mm)`;
+                    desc  = "K-Way requis";
                     color = "var(--warn)";
                     isRain = true;
                 }
-                // 3. JAUNE : Averse locale possible / incertitude (K-Way conseillé)
+                // 3. JAUNE : Averse locale possible / incertitude (K-Way raisonnable)
                 else if (rainCount >= 1 && highestRain >= 0.08) {
                     const isolatedModel = multiRainModels[0];
                     const isIsolatedGlobal = (rainCount === 1 && isolatedModel.name !== 'AROME' && aromeMax !== null && aromeMax <= 0.02);
 
                     if (isIsolatedGlobal && highestRain < 0.25) {
-                        // AROME (haute résolution France) et les autres modèles prévoient route sèche :
-                        // On ne crie pas au loup pour un signal isolé mineur d'un modèle global, route déclarée libre
+                        // AROME et les autres confirment route sèche : pas d'alerte superflue
                         alert = "VOIE LIBRE";
-                        desc  = `Trajet sec (AROME sec · ${isolatedModel.name} isolé ${highestRain.toFixed(1)} mm)`;
+                        desc  = "Bon trajet !";
                         color = "var(--ok)";
                         isRain = false;
                     } else {
                         alert = "RISQUE ONDÉE";
-                        desc  = rainCount === 1 ? `Signal isolé (${isolatedModel.name} · ${highestRain.toFixed(1)} mm) · K-Way` : `Incertitude (${rainCount}/${totalActiveModels} mod.) · K-Way`;
+                        desc  = "K-Way raisonnable";
                         color = "var(--warn)";
                         isRain = true;
                     }
@@ -674,29 +695,31 @@
                 // 4. VERT : Route sèche / Voie libre
                 else {
                     alert = "VOIE LIBRE";
-                    desc  = "Trajet sec";
+                    desc  = "Bon trajet !";
                     color = "var(--ok)";
                     isRain = false;
                 }
             } else {
                 // Mode dégradé si modèles en cours de chargement
                 if (maxP >= 1.5) {
-                    alert = "PLUIE FORTE"; desc = "Prendre la voiture"; color = "var(--danger)"; isRain = true;
+                    alert = "PLUIE FORTE"; desc = "Prends la voiture"; color = "var(--danger)"; isRain = true;
+                } else if (maxP > 0.25) {
+                    alert = "RISQUE PLUIE"; desc = "K-Way requis"; color = "var(--warn)"; isRain = true;
                 } else if (maxP > 0.01) {
-                    alert = "RISQUE PLUIE"; desc = "K-Way + effort"; color = "var(--warn)"; isRain = true;
+                    alert = "RISQUE ONDÉE"; desc = "K-Way raisonnable"; color = "var(--warn)"; isRain = true;
                 } else {
-                    alert = "VOIE LIBRE"; desc = "Trajet sec"; color = "var(--ok)"; isRain = false;
+                    alert = "VOIE LIBRE"; desc = "Bon trajet !"; color = "var(--ok)"; isRain = false;
                 }
             }
 
             // Gestion des alertes vent
             if (windDanger) {
                 alert = isRain ? "PLUIE+VENT FORT" : "VENT DANGEREUX";
-                desc  = "Prendre la voiture";
+                desc  = "Prends la voiture";
                 color = "var(--danger)";
             } else if (windBad) {
                 alert = isRain ? "PLUIE+VENT" : "VENT FORT";
-                desc  = isRain ? desc + " · Vent fort" : "Effort accru";
+                desc  = isRain ? "K-Way requis" : "Effort accru";
                 if (color === "var(--ok)") color = "var(--warn)";
             }
 
@@ -1090,11 +1113,18 @@
                 const wa2 = Logic.windArrow(res.avgDir);
                 const pillColor = Logic.windPillColor(res.avgW);
 
-                const formatHour = (decH) => {
-                    const hh = Math.floor(decH);
-                    const mm = Math.round((decH - hh) * 60);
-                    return `${hh.toString().padStart(2,'0')}h${mm.toString().padStart(2,'0')}`;
+                const parseExactTime = (isoStr) => {
+                    if (!isoStr) return "--h--";
+                    const parts = isoStr.split('T')[1];
+                    if (parts) {
+                        const [hh, mm] = parts.split(':');
+                        return `${hh}h${mm}`;
+                    }
+                    const dt = new Date(isoStr);
+                    return `${dt.getHours().toString().padStart(2,'0')}h${dt.getMinutes().toString().padStart(2,'0')}`;
                 };
+                const exactRiseStr = parseExactTime(d.daily.sunrise?.[state.day]);
+                const exactSetStr  = parseExactTime(d.daily.sunset?.[state.day]);
 
                 // Limites pour le besoin de phares (levé + 30m, couché - 30m)
                 const riseLimit = riseH + 0.5;
@@ -1111,14 +1141,14 @@
                 } else if (s >= riseH && e <= setH) {
                     lightLabel = "Jour"; lightIcon = "☀"; lightColor = "var(--warn)";
                 } else if (s < riseH && e > riseH) {
-                    lightLabel = `Levé (${formatHour(riseH)})`; lightIcon = "🌗";
+                    lightLabel = `Levé (${exactRiseStr})`; lightIcon = "🌗";
                     if (s < riseLimit) {
-                        lightAlert = ` · 💡 Phares < ${formatHour(riseLimit)}`;
+                        lightAlert = ` · 💡 Phares < ${exactRiseStr}`;
                     }
                 } else if (s < setH && e > setH) {
-                    lightLabel = `Couché (${formatHour(setH)})`; lightIcon = "🌗";
+                    lightLabel = `Couché (${exactSetStr})`; lightIcon = "🌗";
                     if (e > setLimit) {
-                        lightAlert = ` · 💡 Phares > ${formatHour(setLimit)}`;
+                        lightAlert = ` · 💡 Phares > ${exactSetStr}`;
                     }
                 }
 
@@ -1126,7 +1156,7 @@
                 document.getElementById(`card-${id}`).style.borderBottomColor = res.color;
                 document.getElementById(`alert-${id}`).innerText  = res.alert;
                 document.getElementById(`alert-${id}`).style.color = res.color;
-                document.getElementById(`desc-${id}`).innerText   = res.desc + lightAlert;
+                document.getElementById(`desc-${id}`).innerText   = res.desc;
                 document.getElementById(`t-${id}`).innerText      = `${s}h–${e}h`;
                 
                 // Température moyenne affichée au centre de la carte
@@ -1159,16 +1189,20 @@
                 const pill  = document.getElementById(`wind-pill-${id}`);
                 const arrow = document.getElementById(`wind-pill-arrow-${id}`);
                 const val   = document.getElementById(`wind-pill-val-${id}`);
+                const dirEl = document.getElementById(`wind-pill-dir-${id}`);
                 pill.style.display = 'inline-flex';
                 pill.style.color   = pillColor;
                 pill.style.borderColor = pillColor === 'var(--text-muted)' ? 'rgba(255,255,255,0.12)' : pillColor;
                 arrow.innerText = wa2.arrow;
-                val.innerText   = `${res.avgW.toFixed(0)} km/h ${wa2.label}`;
+                val.innerText   = `${res.avgW.toFixed(0)} km/h`;
+                if (dirEl) dirEl.innerText = wa2.label;
 
                 const lEl = document.getElementById(`light-${id}`);
                 if (lEl) {
-                    lEl.innerHTML = `<span>${lightIcon}</span> ${lightLabel}`;
+                    const extraPhares = lightAlert ? ' 💡' : '';
+                    lEl.innerHTML = `<span>${lightIcon}</span> ${lightLabel}${extraPhares}`;
                     lEl.style.color = lightColor;
+                    if (lightAlert) lEl.title = lightAlert.replace(' · ', '');
                 }
             };
 
