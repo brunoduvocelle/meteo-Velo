@@ -43,6 +43,17 @@
         .geo-btn.loading { animation:pulse 0.8s infinite; color:white; border-color:white; }
         .geo-btn.locked-gps { background:rgba(239,68,68,0.15); color:var(--danger); border-color:var(--danger); box-shadow:0 0 10px rgba(239,68,68,0.4); }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes spinHourglass { 0% { transform: rotate(0deg); } 50% { transform: rotate(180deg); } 100% { transform: rotate(180deg); } }
+        @keyframes pulseCity { 0% { opacity: 0.35; transform: scale(0.97); } 100% { opacity: 1; transform: scale(1.02); } }
+        .loading-spin { display: inline-block; animation: spinHourglass 1.2s infinite ease-in-out; font-size: 11px; vertical-align: middle; }
+        .city-group.loading-city .city-btn { animation: pulseCity 0.75s infinite alternate ease-in-out; color: var(--accent); }
+        .hero-loading-hourglass { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; font-size: 30px; animation: spinHourglass 1.2s infinite ease-in-out; filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.5)); }
+        .app-window.is-refreshing .hero-section,
+        .app-window.is-refreshing .commute-card,
+        .app-window.is-refreshing .timeline-box {
+            opacity: 0.6;
+            transition: opacity 0.25s ease;
+        }
         .date-display { font-size:11px; color:var(--text-muted); text-transform:uppercase; font-weight:600; }
 
         .hero-section { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--glass-border); }
@@ -554,15 +565,17 @@
 
     const Logic = {
 
-        analyzeChunk: (hourly, dayIdx, start, end) => {
+        analyzeChunk: (hourly, dayIdx, start, end, modelsData = null) => {
             const offset = dayIdx * 24;
             let maxP=0, maxW=0, sumW=0, sumDirX=0, sumDirY=0, count=0, sumT=0;
+            const codeCounts = {};
             for (let i=start; i<end; i++) {
                 const idx = offset+i;
                 const p   = hourly.precipitation?.[idx]  || 0;
                 const w   = hourly.wind_speed_10m?.[idx]  || 0;
                 const dir = hourly.wind_direction_10m?.[idx] || 0;
                 const t   = hourly.temperature_2m?.[idx] || 0;
+                const wc  = hourly.weather_code?.[idx];
                 
                 maxP = Math.max(maxP, p);
                 maxW = Math.max(maxW, w);
@@ -572,6 +585,9 @@
                 sumDirX += Math.cos(dir * Math.PI / 180);
                 sumDirY += Math.sin(dir * Math.PI / 180);
                 count++;
+                if (wc !== undefined) {
+                    codeCounts[wc] = (codeCounts[wc] || 0) + 1;
+                }
             }
             const avgW   = count ? sumW / count : 0;
             const avgT   = count ? sumT / count : 0;
@@ -579,17 +595,121 @@
 
             const windBad    = maxW > WIND_THRESHOLDS.warn;
             const windDanger = maxW > WIND_THRESHOLDS.danger;
-            let alert, desc, color;
-            if (maxP>1.5 || windDanger) {
-                alert = maxP>1.5 && windDanger ? "PLUIE+VENT FORT" : (maxP>1.5 ? "PLUIE FORTE" : "VENT DANGEREUX");
-                desc  = "Prendre la voiture"; color = "var(--danger)";
-            } else if (maxP>0.01 || windBad) {
-                alert = maxP>0.01 && windBad ? "PLUIE+VENT" : (maxP>0.01 ? "RISQUE PLUIE" : "VENT FORT");
-                desc  = maxP>0.01 ? "K-Way + effort" : "Effort accru"; color = "var(--warn)";
-            } else {
-                alert = "VOIE LIBRE"; desc = "Trajet sec"; color = "var(--ok)";
+
+            // Stabilisation multi-modèles contre les revirements brutaux
+            const multiRainModels = [];
+            let totalActiveModels = 0;
+            let medianRain = 0;
+            if (modelsData && modelsData.hourly) {
+                const active = Logic.getActiveModels(modelsData, dayIdx);
+                totalActiveModels = active.length;
+                if (totalActiveModels >= 2) {
+                    const maxPPerModel = [];
+                    active.forEach(m => {
+                        let mMax = 0;
+                        const arr = modelsData.hourly[m.key] || [];
+                        for (let i = start; i < end; i++) {
+                            const val = arr[offset + i] || 0;
+                            if (val > mMax) mMax = val;
+                        }
+                        maxPPerModel.push(mMax);
+                        if (mMax > 0.08) {
+                            multiRainModels.push({ name: m.name, maxP: mMax });
+                        }
+                    });
+                    highestRain = Math.max(...maxPPerModel, maxP);
+                    maxPPerModel.sort((a, b) => a - b);
+                    const mid = Math.floor(maxPPerModel.length / 2);
+                    medianRain = maxPPerModel.length % 2 !== 0 ? maxPPerModel[mid] : (maxPPerModel[mid - 1] + maxPPerModel[mid]) / 2;
+                }
             }
-            return { alert, desc, color, isRain:maxP>0.01, avgW, avgDir, maxW, avgT };
+
+            let alert, desc, color, isRain;
+            const rainCount = multiRainModels.length;
+
+            if (totalActiveModels >= 2) {
+                // 1. ROUGE : Fortes averses / Pluie soutenue (Prendre la voiture)
+                if (highestRain >= 1.5 || medianRain >= 1.0) {
+                    alert = "PLUIE FORTE";
+                    desc  = `Averse forte (${highestRain.toFixed(1)} mm) · Prendre la voiture`;
+                    color = "var(--danger)";
+                    isRain = true;
+                }
+                // 2. JAUNE : Risque de pluie avéré / Pluie modérée (K-Way)
+                else if (rainCount >= Math.ceil(totalActiveModels / 2)) {
+                    alert = "RISQUE PLUIE";
+                    desc  = `K-Way requis (${rainCount}/${totalActiveModels} mod. · ${highestRain.toFixed(1)} mm)`;
+                    color = "var(--warn)";
+                    isRain = true;
+                }
+                // 3. JAUNE : Averse locale possible / incertitude (K-Way conseillé)
+                else if (rainCount >= 1 && highestRain >= 0.25) {
+                    alert = "RISQUE ONDÉE";
+                    desc  = `Incertitude (${rainCount}/${totalActiveModels} mod.) · K-Way`;
+                    color = "var(--warn)";
+                    isRain = true;
+                }
+                // 4. VERT : Route sèche / Voie libre
+                else {
+                    alert = "VOIE LIBRE";
+                    desc  = rainCount === 1 ? `Trajet sec (${multiRainModels[0].name} isolé)` : "Trajet sec";
+                    color = "var(--ok)";
+                    isRain = false;
+                }
+            } else {
+                // Mode dégradé si modèles en cours de chargement
+                if (maxP >= 1.5) {
+                    alert = "PLUIE FORTE"; desc = "Prendre la voiture"; color = "var(--danger)"; isRain = true;
+                } else if (maxP > 0.01) {
+                    alert = "RISQUE PLUIE"; desc = "K-Way + effort"; color = "var(--warn)"; isRain = true;
+                } else {
+                    alert = "VOIE LIBRE"; desc = "Trajet sec"; color = "var(--ok)"; isRain = false;
+                }
+            }
+
+            // Gestion des alertes vent
+            if (windDanger) {
+                alert = isRain ? "PLUIE+VENT FORT" : "VENT DANGEREUX";
+                desc  = "Prendre la voiture";
+                color = "var(--danger)";
+            } else if (windBad) {
+                alert = isRain ? "PLUIE+VENT" : "VENT FORT";
+                desc  = isRain ? desc + " · Vent fort" : "Effort accru";
+                if (color === "var(--ok)") color = "var(--warn)";
+            }
+
+            // Détermination du code météo représentatif pour cette tranche horaire
+            const sunC = codeCounts[0] || 0;
+            const cloudC = codeCounts[3] || 0;
+            const partlyC = (codeCounts[1] || 0) + (codeCounts[2] || 0);
+
+            let weatherCode = 0;
+            if (isRain || maxP > 0.05) {
+                // S'il y a de la pluie ET du soleil / éclaircies dans la tranche -> Pluie et Soleil !
+                if (sunC > 0 || partlyC > 0 || (totalActiveModels >= 2 && rainCount < totalActiveModels)) {
+                    weatherCode = 80; // Code sunCloudRain (Pluie et soleil)
+                } else if (maxP > 1.5 || medianRain > 1.5) {
+                    weatherCode = 65; // Pluie soutenue
+                } else {
+                    weatherCode = 51; // Bruine / Pluie
+                }
+            } else {
+                if (partlyC > 0 || (sunC > 0 && cloudC > 0)) {
+                    weatherCode = cloudC > (sunC + partlyC) * 2 ? 3 : 2; // Belles éclaircies
+                } else if (cloudC > sunC) {
+                    weatherCode = 3; // Couvert
+                } else if (sunC > 0) {
+                    weatherCode = 0; // Plein soleil
+                } else {
+                    let best = 0, mF = -1;
+                    for (const [k, v] of Object.entries(codeCounts)) {
+                        if (v > mF) { mF = v; best = Number(k); }
+                    }
+                    weatherCode = best;
+                }
+            }
+
+            return { alert, desc, color, isRain, avgW, avgDir, maxW, avgT, weatherCode, rainCount, totalActiveModels };
         },
 
         analyzeWind: (spd) => {
@@ -643,41 +763,131 @@
                 return sl;
             });
 
-            let totalDisagreement = 0;
+            // Vote probabiliste du jury de modèles : combien prévoient de la pluie
+            let rainModelsCount = 0;
+            activeModels.forEach((m, idx) => {
+                const maxInSlice = Math.max(...slices[idx]);
+                if (maxInSlice > 0.08) rainModelsCount++;
+            });
+
+            // Consensus d'adhésion : unanimité = 100%, 50/50 = 50%
+            const majorityCount = Math.max(rainModelsCount, K - rainModelsCount);
+            const consensusPct = Math.round((majorityCount / K) * 100);
+
+            let hourDiffSum = 0, pairs = 0;
             for (let i = 0; i < len; i++) {
-                let rainCount = 0;
-                let hourDiffSum = 0;
-                let pairs = 0;
                 for (let m1 = 0; m1 < K; m1++) {
-                    if (slices[m1][i] > 0.05) rainCount++;
                     for (let m2 = m1 + 1; m2 < K; m2++) {
                         hourDiffSum += Math.abs(slices[m1][i] - slices[m2][i]);
                         pairs++;
                     }
                 }
-                const avgPairDiff = pairs > 0 ? (hourDiffSum / pairs) : 0;
-                // Désaccord d'occurrence : 0 si unanimes sec ou pluie, jusqu'à 1 si 50/50
-                const minCount = Math.min(rainCount, K - rainCount);
-                const eventPenalty = minCount / (K / 2);
-
-                // Pénalité combinée qualitative (averse/sec) + quantitative (écart en mm)
-                const hourDisagreement = (eventPenalty * 55) + Math.min(45, avgPairDiff * 35);
-                totalDisagreement += hourDisagreement;
             }
+            const avgDiff = pairs > 0 ? (hourDiffSum / pairs) : 0;
+            const diffPenalty = Math.min(20, avgDiff * 15);
 
-            const avgDisagreement = totalDisagreement / len;
-            const score = Math.max(0, Math.min(100, Math.round(100 - avgDisagreement)));
+            const score = Math.max(10, Math.min(100, Math.round(consensusPct - diffPenalty)));
+            const sub = score >= 80 ? "Fiable ✓" : (score >= 55 ? "Incertitude" : "Peu fiable");
+
             return {
                 score,
-                sub: score >= 80 ? "Fiable ✓" : (score >= 50 ? "Incertitude" : "Peu fiable"),
-                activeCount: K
+                sub,
+                activeCount: K,
+                rainModelsCount,
+                consensusPct
             };
         },
 
         svg: {
-            sun:   c=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.4 1.4M18.36 18.36l1.4 1.4M1 12h2m18 0h2M4.22 19.78l1.4-1.4M18.36 5.64l1.4-1.4"/></svg>`,
-            cloud: c=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.5" stroke-linecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>`,
-            rain:  c=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.5" stroke-linecap="round"><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/><path d="M8 13v8M16 13v8"/></svg>`
+            sun: (c = 'var(--warn)') => `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5" fill="rgba(250,204,21,0.2)"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41m14.14-14.14l-1.41 1.41"/></svg>`,
+            
+            sunCloud: () => `<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2m4.24 1.76l1.42-1.42M20 12h2" stroke="var(--warn)" stroke-width="2.2"/><path d="M15.95 12.65a4 4 0 0 0-5.93-4.13" stroke="var(--warn)" stroke-width="2.2"/><circle cx="12" cy="10" r="3" fill="rgba(250,204,21,0.25)" stroke="none"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6z" stroke="#e2e8f0" stroke-width="2" fill="rgba(15,23,42,0.85)"/></svg>`,
+            
+            sunCloudRain: () => `<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 2v2m4.24 1.76l1.42-1.42M20 12h2" stroke="var(--warn)" stroke-width="2.2"/><path d="M15.95 12.65a4 4 0 0 0-5.93-4.13" stroke="var(--warn)" stroke-width="2.2"/><circle cx="12" cy="10" r="3" fill="rgba(250,204,21,0.25)" stroke="none"/><path d="M13 18H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6z" stroke="#e2e8f0" stroke-width="2" fill="rgba(15,23,42,0.85)"/><path d="M8 20.5v2.5m4-2.5v2.5" stroke="var(--accent)" stroke-width="2.2"/></svg>`,
+            
+            cloud: (c = 'var(--text-muted)') => `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a5 5 0 0 1-1-9.9 6 6 0 0 1 10.9 2.9A4 4 0 0 1 17.5 19z" fill="rgba(148,163,184,0.12)"/></svg>`,
+            
+            drizzle: (c = 'var(--accent)') => `<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M17.5 16H9a5 5 0 0 1-1-9.9 6 6 0 0 1 10.9 2.9A4 4 0 0 1 17.5 16z" stroke="${c}" fill="rgba(56,189,248,0.1)"/><path d="M9 19v2m5-2v2" stroke="${c}" stroke-width="2.2"/></svg>`,
+            
+            rain: (c = 'var(--accent)') => `<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M17.5 15H9a5 5 0 0 1-1-9.9 6 6 0 0 1 10.9 2.9A4 4 0 0 1 17.5 15z" stroke="${c}" fill="rgba(56,189,248,0.12)"/><path d="M8 18v4m4-4v4m4-4v4" stroke="${c}" stroke-width="2.2"/></svg>`,
+            
+            thunder: () => `<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M17.5 15H9a5 5 0 0 1-1-9.9 6 6 0 0 1 10.9 2.9A4 4 0 0 1 17.5 15z" stroke="var(--rain-heavy-ui)" stroke-width="2" fill="rgba(192,132,252,0.12)"/><path d="M13 13l-2.5 4.5h3l-1.5 4.5 4.5-5.5h-3.5l2-3.5z" stroke="var(--warn)" fill="var(--warn)" stroke-width="1.2"/></svg>`,
+            
+            snow: () => `<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M17.5 15H9a5 5 0 0 1-1-9.9 6 6 0 0 1 10.9 2.9A4 4 0 0 1 17.5 15z" stroke="#93c5fd" stroke-width="2" fill="rgba(147,197,253,0.1)"/><circle cx="9" cy="19" r="1" fill="#93c5fd"/><circle cx="15" cy="19" r="1" fill="#93c5fd"/><circle cx="12" cy="21" r="1" fill="#93c5fd"/></svg>`,
+            
+            fog: () => `<svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h16M3 15h18M6 19h12M7 7a5 5 0 0 1 9.8-1.5A4 4 0 0 1 19 9H5"/></svg>`
+        },
+
+        getWeatherIcon: (code) => {
+            const c = Number(code);
+            if (isNaN(c) || c === null) return Logic.svg.sunCloud();
+            if (c === 0) return Logic.svg.sun();
+            if (c === 1 || c === 2) return Logic.svg.sunCloud();
+            if (c === 3) return Logic.svg.cloud();
+            if (c === 45 || c === 48) return Logic.svg.fog();
+            if (c === 80 || c === 81 || c === 84) return Logic.svg.sunCloudRain(); // Pluie et soleil
+            if ((c >= 51 && c <= 57) || c === 61) return Logic.svg.drizzle();
+            if ((c >= 62 && c <= 67) || (c >= 82 && c <= 83)) return Logic.svg.rain();
+            if ((c >= 71 && c <= 77) || c === 85 || c === 86) return Logic.svg.snow();
+            if (c >= 95) return Logic.svg.thunder();
+            return Logic.svg.sunCloud();
+        },
+
+        getDaytimeWeatherCode: (hourly, dayIdx, riseH, setH, fallbackCode) => {
+            if (!hourly || !hourly.weather_code) return fallbackCode || 0;
+            const startH = Math.max(0, Math.floor(riseH || 8));
+            const endH = Math.min(23, Math.ceil(setH || 19));
+            const offset = dayIdx * 24;
+
+            let totalP = 0, rainHours = 0, maxP = 0;
+            const codeCounts = {};
+
+            for (let h = startH; h <= endH; h++) {
+                const idx = offset + h;
+                const p = hourly.precipitation?.[idx] || 0;
+                const wc = hourly.weather_code?.[idx];
+                if (p > 0.05) {
+                    totalP += p;
+                    rainHours++;
+                }
+                maxP = Math.max(maxP, p);
+                if (wc !== undefined) {
+                    codeCounts[wc] = (codeCounts[wc] || 0) + 1;
+                }
+            }
+
+            const sunCount = codeCounts[0] || 0;
+            const cloudCount = codeCounts[3] || 0;
+            const partlyCount = (codeCounts[1] || 0) + (codeCounts[2] || 0);
+            const hasSunLight = (sunCount + partlyCount) > 0;
+            const hasRain = rainHours >= 1 || totalP > 0.1 || maxP > 0.1;
+
+            // Pluie et soleil dans la même journée (Averses et belles éclaircies)
+            if (hasSunLight && hasRain) {
+                return 80; // Icône sunCloudRain (Pluie et soleil)
+            }
+
+            // Si pluie continue sans aucun soleil (ciel bouché)
+            if (hasRain && !hasSunLight && cloudCount > 0) {
+                return maxP > 1.5 ? 65 : 61;
+            }
+
+            // Nuages et ensoleillement diurne sec
+            if (partlyCount > 0 || (sunCount > 0 && cloudCount > 0)) {
+                return cloudCount > (sunCount + partlyCount) * 2 ? 3 : 2;
+            }
+            if (cloudCount > sunCount) return 3;
+            if (sunCount > 0) return 0;
+
+            let bestCode = fallbackCode || 0;
+            let maxFreq = -1;
+            for (const [wcStr, freq] of Object.entries(codeCounts)) {
+                if (freq > maxFreq) {
+                    maxFreq = freq;
+                    bestCode = Number(wcStr);
+                }
+            }
+            return bestCode;
         }
     };
 
@@ -704,15 +914,26 @@
             document.getElementById('lbl-date').innerText = new Date(d.daily.time[state.day]).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase();
             document.getElementById('lbl-temp').innerText = (state.day===0?d.current.temperature_2m:d.daily.temperature_2m_max[state.day]).toFixed(1);
 
-            const wCode=d.daily.weather_code[state.day];
-            document.getElementById('hero-icon').innerHTML = wCode>50?Logic.svg.rain('var(--accent)'):(wCode>3?Logic.svg.cloud('var(--text-muted)'):Logic.svg.sun('var(--warn)'));
+            // Détermination du code météo à afficher dans le grand widget (Hero icon)
+            let displayWCode;
+            if (state.day === 0) {
+                // Jour même : temps immédiat à l'instant T
+                displayWCode = (d.current && d.current.weather_code !== undefined)
+                    ? d.current.weather_code
+                    : (d.hourly.weather_code?.[h] ?? d.daily.weather_code[0]);
+            } else {
+                // Jours suivants : temps diurne représentatif (entre lever et coucher du soleil)
+                displayWCode = Logic.getDaytimeWeatherCode(d.hourly, state.day, riseH, setH, d.daily.weather_code[state.day]);
+            }
+            document.getElementById('hero-icon').innerHTML = Logic.getWeatherIcon(displayWCode);
+            document.querySelector('.city-group')?.classList.remove('loading-city');
 
             ['dot-m','dot-mi','dot-s'].forEach((id,i)=>{
                 const range=[[0,11],[11,15],[15,23]][i];
-                const r=Logic.analyzeChunk(d.hourly,state.day,range[0],range[1]);
+                const r=Logic.analyzeChunk(d.hourly,state.day,range[0],range[1],state.modelsData);
                 const dot=document.getElementById(id);
                 dot.style.background=r.color; dot.style.boxShadow=`0 0 7px ${r.color}`;
-                document.getElementById(['ico-m','ico-mi','ico-s'][i]).innerHTML=r.isRain?Logic.svg.rain('var(--accent)'):(wCode>3?Logic.svg.cloud('var(--text-muted)'):Logic.svg.sun('var(--warn)'));
+                document.getElementById(['ico-m','ico-mi','ico-s'][i]).innerHTML = Logic.getWeatherIcon(r.weatherCode);
             });
 
             const wi=state.day*24+(state.day===0?h:9);
@@ -763,12 +984,31 @@
 
             const tl=document.getElementById('timeline-box'); tl.innerHTML='';
             for(let i=0;i<24;i++){
-                const r=d.hourly.precipitation?.[state.day*24+i]||0;
+                const baseIdx = state.day * 24 + i;
+                let r = d.hourly.precipitation?.[baseIdx] || 0;
+                
+                // Harmonisation avec les modèles haute résolution (AROME / consensus multi-modèles)
+                if (state.modelsData && state.modelsData.hourly) {
+                    const active = Logic.getActiveModels(state.modelsData, state.day);
+                    if (active.length > 0) {
+                        const arome = active.find(m => m.name === 'AROME');
+                        const aromeVal = (arome && state.modelsData.hourly[arome.key]) ? (state.modelsData.hourly[arome.key][baseIdx] ?? null) : null;
+                        
+                        if (aromeVal !== null) {
+                            r = Math.max(aromeVal, r);
+                        } else {
+                            const vals = active.map(m => state.modelsData.hourly[m.key]?.[baseIdx] || 0);
+                            r = Math.max(...vals, r);
+                        }
+                    }
+                }
+
                 const bar=document.createElement('div'); bar.className='time-bar';
                 let hp=Math.min(100,Math.max(10,r*35)); if(r===0)hp=8;
                 bar.style.height=hp+'%';
                 if(r>1.5)bar.classList.add('rain-heavy'); else if(r>0.01)bar.classList.add('rain-light');
                 if(state.day===0&&i===h)bar.classList.add('current');
+                bar.title = `${i.toString().padStart(2,'0')}h : ${r.toFixed(1)} mm`;
                 tl.appendChild(bar);
             }
 
@@ -785,7 +1025,7 @@
             document.getElementById('radar-section').classList.toggle('disabled', state.day !== 0);
 
             const upCard = (id, s, e) => {
-                const res = Logic.analyzeChunk(d.hourly, state.day, s, e);
+                const res = Logic.analyzeChunk(d.hourly, state.day, s, e, state.modelsData);
                 const wa2 = Logic.windArrow(res.avgDir);
                 const pillColor = Logic.windPillColor(res.avgW);
 
@@ -877,12 +1117,17 @@
             const strip=document.getElementById('week-strip'); strip.innerHTML='';
             for(let i=0;i<8;i++){
                 const box=document.createElement('div'); box.className=`day-box ${i===state.day?'active':''}`;
-                const dt=new Date(d.daily.time[i]), wc=d.daily.weather_code[i];
-                const ico=wc>50?Logic.svg.rain('var(--accent)'):(wc>3?Logic.svg.cloud('var(--text-muted)'):Logic.svg.sun('var(--warn)'));
+                const dt=new Date(d.daily.time[i]);
+                const riseHi = getDecimalHour(d.daily.sunrise?.[i]);
+                const setHi  = getDecimalHour(d.daily.sunset?.[i]);
+                const dayCode = (i === 0 && d.current && d.current.weather_code !== undefined)
+                    ? d.current.weather_code
+                    : Logic.getDaytimeWeatherCode(d.hourly, i, riseHi, setHi, d.daily.weather_code[i]);
+                const ico = Logic.getWeatherIcon(dayCode);
                 
                 // Calcul du score météo vélo journalier (Aller & Retour)
-                const resAller = Logic.analyzeChunk(d.hourly, i, state.config.as, state.config.ae);
-                const resRetour = Logic.analyzeChunk(d.hourly, i, state.config.rs, state.config.re);
+                const resAller = Logic.analyzeChunk(d.hourly, i, state.config.as, state.config.ae, state.modelsData);
+                const resRetour = Logic.analyzeChunk(d.hourly, i, state.config.rs, state.config.re, state.modelsData);
                 let dotColor = "var(--ok)";
                 if (resAller.color === "var(--danger)" || resRetour.color === "var(--danger)") {
                     dotColor = "var(--danger)";
@@ -902,55 +1147,64 @@
 
         const fetchW = async () => {
             state.day = 0;
+            // Feedback visuel immédiat : nom de ville actualisé, ville clignotante et sablier à la place de l'icône météo
+            if (state.config.name && state.config.name !== '...') {
+                document.getElementById('btn-city').innerText = state.config.name;
+            }
+            document.querySelector('.city-group')?.classList.add('loading-city');
+            const heroIconEl = document.getElementById('hero-icon');
+            if (heroIconEl) heroIconEl.innerHTML = '<div class="hero-loading-hourglass">⏳</div>';
+
+            const syncEl = document.getElementById('lbl-sync');
+            if (syncEl) syncEl.innerHTML = '<span class="loading-spin">⏳</span> Actualisation...';
+            document.querySelector('.app-window')?.classList.add('is-refreshing');
+
             const base=`latitude=${state.config.lat}&longitude=${state.config.lon}&timezone=auto&forecast_days=8`;
-            const ch=`hourly=precipitation,rain,showers,wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,apparent_temperature,uv_index`;
+            const ch=`hourly=precipitation,rain,showers,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,apparent_temperature,uv_index`;
+
             try {
-                // 1. Récupération météo principale (fonctionne partout)
-                const r1 = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}&minutely_15=precipitation`);
-                state.weather = await r1.json();
-                
-                // 2. Récupération des modèles globaux (fonctionne partout)
-                let globalData = null;
-                try {
-                    const r2 = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=ecmwf_ifs025,gfs_seamless,icon_seamless,gem_global`);
-                    if (r2.ok) {
-                        globalData = await r2.json();
+                // Requêtes exécutées en parallèle (gain de vitesse x3)
+                const p1 = fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m,weather_code,is_day&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}&minutely_15=precipitation`)
+                    .then(async r => {
+                        if (!r.ok) return null;
+                        const data = await r.json();
+                        state.weather = data;
+                        render(); // Rendu progressif : météo principale affichée dès 300ms
+                        return data;
+                    }).catch(e => { console.error("Erreur météo de base", e); return null; });
+
+                const p2 = fetch(`https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=ecmwf_ifs025,gfs_seamless,icon_seamless,gem_global`)
+                    .then(r => r.ok ? r.json() : null).catch(() => null);
+
+                const p3 = fetch(`https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=meteofrance_arome_france,meteofrance_arpege_europe`)
+                    .then(r => r.ok ? r.json() : null).catch(() => null);
+
+                const [wData, globalData, regionalData] = await Promise.all([p1, p2, p3]);
+
+                if (wData) {
+                    state.weather = wData;
+                    state.modelsData = { hourly: {} };
+                    if (globalData && globalData.hourly) {
+                        Object.assign(state.modelsData.hourly, globalData.hourly);
                     }
-                } catch(errGlobal) {
-                    console.error("Erreur récupération modèles globaux", errGlobal);
-                }
-
-                // 3. Récupération des modèles régionaux européens (échoue hors Europe)
-                let regionalData = null;
-                try {
-                    const r3 = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=meteofrance_arome_france,meteofrance_arpege_europe`);
-                    if (r3.ok) {
-                        regionalData = await r3.json();
+                    if (regionalData && regionalData.hourly) {
+                        Object.assign(state.modelsData.hourly, regionalData.hourly);
                     }
-                } catch(errRegional) {
-                    console.warn("Modèles régionaux ignorés (hors Europe)", errRegional);
+                    render(); // Consolidation finale avec l'ensemble des modèles
                 }
-
-                // 4. Fusion des données horaires de précipitations
-                state.modelsData = { hourly: {} };
-                if (globalData && globalData.hourly) {
-                    Object.assign(state.modelsData.hourly, globalData.hourly);
-                }
-                if (regionalData && regionalData.hourly) {
-                    Object.assign(state.modelsData.hourly, regionalData.hourly);
-                }
-
-                render();
             } catch(e) {
                 console.error("Erreur lors de la récupération, essai en mode dégradé...", e);
                 try {
-                    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}&minutely_15=precipitation`);
+                    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m,weather_code,is_day&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}&minutely_15=precipitation`);
                     state.weather = await r.json();
                     state.modelsData = null;
                     render();
                 } catch(e2) {
                     console.error("Échec complet de la récupération météo", e2);
                 }
+            } finally {
+                document.querySelector('.app-window')?.classList.remove('is-refreshing');
+                document.querySelector('.city-group')?.classList.remove('loading-city');
             }
         };
 
@@ -1212,7 +1466,38 @@
         toggleRainDetails: s=>{ document.getElementById('ov-rain-details').classList.toggle('visible',s); if(s) window.app.renderRainDetails(); },
         toggleComfortDetails: s=>{ document.getElementById('ov-comfort-details').classList.toggle('visible',s); if(s) window.app.renderComfortDetails(); },
         toggleWindDetails: s=>{ document.getElementById('ov-wind-details').classList.toggle('visible',s); if(s) window.app.renderWindDetails(); },
-        search: async q=>{ if(q.length<3)return; try{ const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr&format=json`); const d=await r.json(); const l=document.getElementById('lst-results'); l.innerHTML=''; (d.results||[]).forEach(c=>{ const div=document.createElement('div'); div.className='res-row'; div.innerHTML=`<b>${c.name}</b> <small style="opacity:0.5">${c.admin1||''}</small>`; div.onclick=()=>{ window.app.state.config={...window.app.state.config,lat:c.latitude,lon:c.longitude,name:c.name.toUpperCase()}; window.app.fetch(); window.ui.toggleSearch(false); }; l.appendChild(div); }); }catch(e){} }
+        search: async q => {
+            if (q.length < 3) return;
+            const l = document.getElementById('lst-results');
+            l.innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--text-muted);"><span class="loading-spin">⏳</span> Recherche en cours...</div>';
+            try {
+                const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=fr&format=json`);
+                const d = await r.json();
+                l.innerHTML = '';
+                if (!d.results || d.results.length === 0) {
+                    l.innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--text-muted);">Aucune ville trouvée</div>';
+                    return;
+                }
+                d.results.forEach(c => {
+                    const div = document.createElement('div');
+                    div.className = 'res-row';
+                    div.innerHTML = `<b>${c.name}</b> <small style="opacity:0.6">${c.admin1 || ''} (${c.country_code || ''})</small>`;
+                    div.onclick = () => {
+                        window.app.state.config = {
+                            ...window.app.state.config,
+                            lat: c.latitude,
+                            lon: c.longitude,
+                            name: c.name.toUpperCase()
+                        };
+                        window.ui.toggleSearch(false);
+                        window.app.fetch();
+                    };
+                    l.appendChild(div);
+                });
+            } catch(e) {
+                l.innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--danger);">Erreur lors de la recherche</div>';
+            }
+        }
     };
 
     let st;
