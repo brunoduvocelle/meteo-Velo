@@ -608,6 +608,7 @@
             const multiRainModels = [];
             let totalActiveModels = 0;
             let medianRain = 0;
+            let aromeMax = null;
             if (modelsData && modelsData.hourly) {
                 const active = Logic.getActiveModels(modelsData, dayIdx);
                 totalActiveModels = active.length;
@@ -620,6 +621,7 @@
                             const val = arr[offset + i] || 0;
                             if (val > mMax) mMax = val;
                         }
+                        if (m.name === 'AROME') aromeMax = mMax;
                         maxPPerModel.push(mMax);
                         if (mMax > 0.08) {
                             multiRainModels.push({ name: m.name, maxP: mMax });
@@ -652,10 +654,22 @@
                 }
                 // 3. JAUNE : Averse locale possible / incertitude (K-Way conseillé)
                 else if (rainCount >= 1 && highestRain >= 0.08) {
-                    alert = "RISQUE ONDÉE";
-                    desc  = rainCount === 1 ? `Signal isolé (${multiRainModels[0].name} · ${highestRain.toFixed(1)} mm) · K-Way` : `Incertitude (${rainCount}/${totalActiveModels} mod.) · K-Way`;
-                    color = "var(--warn)";
-                    isRain = true;
+                    const isolatedModel = multiRainModels[0];
+                    const isIsolatedGlobal = (rainCount === 1 && isolatedModel.name !== 'AROME' && aromeMax !== null && aromeMax <= 0.02);
+
+                    if (isIsolatedGlobal && highestRain < 0.25) {
+                        // AROME (haute résolution France) et les autres modèles prévoient route sèche :
+                        // On ne crie pas au loup pour un signal isolé mineur d'un modèle global, route déclarée libre
+                        alert = "VOIE LIBRE";
+                        desc  = `Trajet sec (AROME sec · ${isolatedModel.name} isolé ${highestRain.toFixed(1)} mm)`;
+                        color = "var(--ok)";
+                        isRain = false;
+                    } else {
+                        alert = "RISQUE ONDÉE";
+                        desc  = rainCount === 1 ? `Signal isolé (${isolatedModel.name} · ${highestRain.toFixed(1)} mm) · K-Way` : `Incertitude (${rainCount}/${totalActiveModels} mod.) · K-Way`;
+                        color = "var(--warn)";
+                        isRain = true;
+                    }
                 }
                 // 4. VERT : Route sèche / Voie libre
                 else {
@@ -1167,9 +1181,7 @@
                 const dt=new Date(d.daily.time[i]);
                 const riseHi = getDecimalHour(d.daily.sunrise?.[i]);
                 const setHi  = getDecimalHour(d.daily.sunset?.[i]);
-                const dayCode = (i === 0 && d.current && d.current.weather_code !== undefined)
-                    ? d.current.weather_code
-                    : Logic.getDaytimeWeatherCode(d.hourly, i, riseHi, setHi, d.daily.weather_code[i]);
+                const dayCode = Logic.getDaytimeWeatherCode(d.hourly, i, riseHi, setHi, d.daily.weather_code[i]);
                 const ico = Logic.getWeatherIcon(dayCode);
                 
                 // Calcul du score météo vélo journalier (Aller & Retour)
