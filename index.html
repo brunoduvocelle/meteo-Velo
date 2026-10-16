@@ -128,11 +128,13 @@
         }
 
         .timeline-container { margin-bottom:8px; }
-        .timeline-box { display:flex; align-items:flex-end; justify-content:space-between; height:38px; background:rgba(0,0,0,0.3); border-radius:6px 6px 0 0; padding:0 4px; }
-        .time-labels { display:flex; justify-content:space-between; padding:2px 4px; background:rgba(0,0,0,0.2); border-radius:0 0 6px 6px; font-size:7px; color:var(--text-muted); font-weight:600; font-family:monospace; }
-        .time-bar { flex:1; margin:0 1px; background:rgba(255,255,255,0.05); border-radius:1px; height:4px; min-height:4px; transition:height 0.3s; }
+        .timeline-box { display:grid; grid-template-columns:repeat(24, 1fr); gap:2px; align-items:flex-end; height:38px; background:rgba(0,0,0,0.3); border-radius:6px 6px 0 0; padding:0 4px; }
+        .time-labels { display:grid; grid-template-columns:repeat(24, 1fr); gap:2px; padding:2px 4px; background:rgba(0,0,0,0.2); border-radius:0 0 6px 6px; font-size:7.5px; color:var(--text-muted); font-weight:600; font-family:monospace; }
+        .time-labels span { white-space:nowrap; overflow:visible; }
+        .time-bar { width:100%; margin:0; background:rgba(255,255,255,0.05); border-radius:1px; height:4px; min-height:4px; transition:height 0.3s; }
         .time-bar.rain-light { background:var(--accent); box-shadow:0 0 4px var(--accent-glow); }
         .time-bar.rain-heavy { background:var(--rain-heavy-ui); }
+        .time-bar.rain-isolated { background:rgba(56,189,248,0.38); border-top:1px dashed var(--accent); }
         .time-bar.current { background:#fff; box-shadow:0 0 6px #fff; z-index:2; }
 
         .radar-strip { display:flex; gap:4px; margin-bottom:4px; border:1px solid transparent; border-radius:5px; padding:3px; transition:all 0.4s; }
@@ -377,7 +379,13 @@
     </div>
     <div class="timeline-container" id="timeline-trigger" style="cursor:pointer;" title="Cliquer pour voir le détail des modèles">
         <div id="timeline-box" class="timeline-box"></div>
-        <div class="time-labels"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>23h</span></div>
+        <div class="time-labels">
+            <span style="grid-column: 1 / span 3; text-align: left;">00h</span>
+            <span style="grid-column: 6 / span 3; text-align: center;">06h</span>
+            <span style="grid-column: 12 / span 3; text-align: center;">12h</span>
+            <span style="grid-column: 18 / span 3; text-align: center;">18h</span>
+            <span style="grid-column: 22 / span 3; text-align: right;">23h</span>
+        </div>
     </div>
 
     <div id="radar-section" class="radar-section">
@@ -643,16 +651,16 @@
                     isRain = true;
                 }
                 // 3. JAUNE : Averse locale possible / incertitude (K-Way conseillé)
-                else if (rainCount >= 1 && highestRain >= 0.25) {
+                else if (rainCount >= 1 && highestRain >= 0.08) {
                     alert = "RISQUE ONDÉE";
-                    desc  = `Incertitude (${rainCount}/${totalActiveModels} mod.) · K-Way`;
+                    desc  = rainCount === 1 ? `Signal isolé (${multiRainModels[0].name} · ${highestRain.toFixed(1)} mm) · K-Way` : `Incertitude (${rainCount}/${totalActiveModels} mod.) · K-Way`;
                     color = "var(--warn)";
                     isRain = true;
                 }
                 // 4. VERT : Route sèche / Voie libre
                 else {
                     alert = "VOIE LIBRE";
-                    desc  = rainCount === 1 ? `Trajet sec (${multiRainModels[0].name} isolé)` : "Trajet sec";
+                    desc  = "Trajet sec";
                     color = "var(--ok)";
                     isRain = false;
                 }
@@ -987,28 +995,43 @@
                 const baseIdx = state.day * 24 + i;
                 let r = d.hourly.precipitation?.[baseIdx] || 0;
                 
-                // Harmonisation avec les modèles haute résolution (AROME / consensus multi-modèles)
+                let rainModelCount = 0;
+                let rainModelNames = [];
+
+                // Harmonisation avec l'ensemble des modèles actifs (consensus multi-modèles)
                 if (state.modelsData && state.modelsData.hourly) {
                     const active = Logic.getActiveModels(state.modelsData, state.day);
                     if (active.length > 0) {
-                        const arome = active.find(m => m.name === 'AROME');
-                        const aromeVal = (arome && state.modelsData.hourly[arome.key]) ? (state.modelsData.hourly[arome.key][baseIdx] ?? null) : null;
-                        
-                        if (aromeVal !== null) {
-                            r = Math.max(aromeVal, r);
-                        } else {
-                            const vals = active.map(m => state.modelsData.hourly[m.key]?.[baseIdx] || 0);
-                            r = Math.max(...vals, r);
-                        }
+                        const vals = [r];
+                        active.forEach(m => {
+                            const val = state.modelsData.hourly[m.key]?.[baseIdx] || 0;
+                            vals.push(val);
+                            if (val > 0.01) {
+                                rainModelCount++;
+                                rainModelNames.push(m.name);
+                            }
+                        });
+                        r = Math.max(...vals);
                     }
                 }
 
                 const bar=document.createElement('div'); bar.className='time-bar';
                 let hp=Math.min(100,Math.max(10,r*35)); if(r===0)hp=8;
                 bar.style.height=hp+'%';
-                if(r>1.5)bar.classList.add('rain-heavy'); else if(r>0.01)bar.classList.add('rain-light');
+                
+                const isIsolated = rainModelCount === 1 && !rainModelNames.includes('AROME');
+                if(r>1.5) {
+                    bar.classList.add('rain-heavy');
+                } else if(isIsolated) {
+                    bar.classList.add('rain-isolated');
+                } else if(r>0.01) {
+                    bar.classList.add('rain-light');
+                }
+                
                 if(state.day===0&&i===h)bar.classList.add('current');
-                bar.title = `${i.toString().padStart(2,'0')}h : ${r.toFixed(1)} mm`;
+                bar.title = isIsolated 
+                    ? `${i.toString().padStart(2,'0')}h : ${r.toFixed(1)} mm (Signal isolé ${rainModelNames[0]})`
+                    : `${i.toString().padStart(2,'0')}h : ${r.toFixed(1)} mm`;
                 tl.appendChild(bar);
             }
 
