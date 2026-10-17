@@ -894,16 +894,32 @@
         },
 
         // Ajustement selon la perception humaine :
-        // Si les nuages bas (opaques) sont quasi absents (< 15-20%), un voile d'altitude est ressenti comme "Plein Soleil"
-        // Si les nuages bas ou totaux sont massifs (>= 75%), sensation de ciel gris / couvert
-        // Si présence modérée de nuages bas (20-70%), sensation de passages nuageux / éclaircies
-        adjustCodeForHumanPerception: (rawCode, cloudLow, cloudTot) => {
+        // 1. Pluie/Averse avec soleil : si pluie légère/bruine mais présence de lumière solaire (UV >= 2, ou ciel non saturé < 85%), afficher Pluie+Soleil (80)
+        // 2. Si les nuages bas (opaques) sont quasi absents (< 15-20%), un voile d'altitude est ressenti comme "Plein Soleil"
+        // 3. Si les nuages bas ou totaux sont massifs (>= 75%), sensation de ciel gris / couvert
+        // 4. Si présence modérée de nuages bas (20-70%), sensation de passages nuageux / éclaircies
+        adjustCodeForHumanPerception: (rawCode, cloudLow, cloudTot, uv = 0, precip = 0) => {
             const c = Number(rawCode);
-            // On ne modifie pas les phénomènes météo spécifiques (pluie, neige, orage, brouillard)
-            if (c >= 45 || c === 80 || c === 81 || c === 84) return c;
-
             const low = cloudLow !== undefined && cloudLow !== null ? Number(cloudLow) : null;
             const tot = cloudTot !== undefined && cloudTot !== null ? Number(cloudTot) : null;
+            const uvVal = uv !== undefined && uv !== null ? Number(uv) : 0;
+            const pVal = precip !== undefined && precip !== null ? Number(precip) : 0;
+
+            // Gestion de la pluie : distinguer averse/ondée avec soleil d'un déluge sous ciel plombé
+            const isRainCode = (c >= 51 && c <= 67) || (c >= 80 && c <= 84);
+            if (isRainCode) {
+                // Si la pluie est faible ou modérée (< 1.5 mm) ET que le soleil perce (UV >= 2 ou ciel non 100% bouché tot < 88%)
+                const hasSunlight = uvVal >= 2 || (tot !== null && tot < 85) || (low !== null && low < 65);
+                if (hasSunlight && pVal < 1.8) {
+                    return 80; // Averse avec soleil (sunCloudRain 🌦️)
+                }
+                // Si pluie soutenue ou ciel totalement plombé/fermé
+                return (c >= 62 || pVal >= 1.5) ? 65 : 61;
+            }
+
+            // Ne pas modifier les phénomènes extrêmes non pluvieux (neige, orage, brouillard)
+            if (c >= 71) return c;
+            if (c === 45 || c === 48) return c;
 
             if (low !== null) {
                 // 1. Plein ciel bleu à l'œil humain : nuages bas quasi inexistants
@@ -1051,9 +1067,26 @@
     };
 
     window.app = (() => {
+        // Chargement immédiat de la dernière ville enregistrée (ou Lille par défaut)
+        let savedCity = null;
+        try {
+            const raw = localStorage.getItem('mv_last_city');
+            if (raw) savedCity = JSON.parse(raw);
+        } catch(e) {}
+
         const state = {
-            config: { lat:50.62, lon:3.14, name:"...", as:DEFAULT_COMMUTE.matin_aller_start, ae:DEFAULT_COMMUTE.matin_aller_end, rs:DEFAULT_COMMUTE.soir_retour_start, re:DEFAULT_COMMUTE.soir_retour_end },
-            weather:null, modelsData:null, day:0
+            config: {
+                lat: savedCity?.lat ?? 50.62,
+                lon: savedCity?.lon ?? 3.14,
+                name: savedCity?.name ?? "LILLE",
+                as: DEFAULT_COMMUTE.matin_aller_start,
+                ae: DEFAULT_COMMUTE.matin_aller_end,
+                rs: DEFAULT_COMMUTE.soir_retour_start,
+                re: DEFAULT_COMMUTE.soir_retour_end
+            },
+            weather: null,
+            modelsData: null,
+            day: 0
         };
 
         const render = () => {
@@ -1076,7 +1109,18 @@
             // Détermination du code météo à afficher dans le grand widget (Hero icon)
             let displayWCode;
             if (state.day === 0) {
-                // Jour même : temps immédiat à l'instant T ajusté à la perception humaine
+                // Fenêtre glissante de 45 minutes : instant T + radar immédiat (3 prochains quarts d'heure)
+                const si = h * 4 + Math.floor(m / 15);
+                let radarRainIn45m = 0;
+                let maxRadarP = 0;
+                if (d.minutely_15 && d.minutely_15.precipitation) {
+                    for (let step = 0; step < 3; step++) {
+                        const rP = d.minutely_15.precipitation[si + step] || 0;
+                        if (rP > 0.02) radarRainIn45m++;
+                        if (rP > maxRadarP) maxRadarP = rP;
+                    }
+                }
+
                 const rawWCode = (d.current && d.current.weather_code !== undefined)
                     ? d.current.weather_code
                     : (d.hourly.weather_code?.[h] ?? d.daily.weather_code[0]);
@@ -1086,7 +1130,37 @@
                 const cTot = (d.current && d.current.cloud_cover !== undefined)
                     ? d.current.cloud_cover
                     : d.hourly.cloud_cover?.[h];
-                displayWCode = Logic.adjustCodeForHumanPerception(rawWCode, cLow, cTot);
+                const currUv = (d.current && d.current.uv_index !== undefined)
+                    ? d.current.uv_index
+                    : (d.hourly.uv_index?.[h] ?? 0);
+                const currPrecip = (d.current && d.current.precipitation !== undefined)
+                    ? d.current.precipitation
+                    : (d.hourly.precipitation?.[h] ?? 0);
+
+                // Si de la pluie est détectée dans la fenêtre des 45 min
+                const effectivePrecip = Math.max(currPrecip, maxRadarP);
+                const isRainAround = radarRainIn45m >= 1 || effectivePrecip > 0.05 || (rawWCode >= 51 && rawWCode <= 67) || (rawWCode >= 80 && rawWCode <= 84);
+
+                if (isRainAround) {
+                    // Si le soleil perce (UV >= 2 ou ciel non totalement plombé) -> Averse et soleil (🌦️)
+                    if (currUv >= 2 || (cTot !== null && cTot < 85) || (cLow !== null && cLow < 65)) {
+                        displayWCode = 80; // Averse & soleil (sunCloudRain 🌦️)
+                    } else {
+                        displayWCode = (effectivePrecip >= 1.5 || rawWCode >= 62) ? 65 : 61; // Pluie continue
+                    }
+                } else {
+                    // Pas de pluie dans les 45 min : vérifier si ciel de traîne / passages nuageux
+                    // S'il y a des averses proches dans l'heure précédente ou suivante, temporiser sur Soleil+Nuages (2) au lieu de Plein Soleil
+                    const prevP = h > 0 ? (d.hourly.precipitation?.[h - 1] || 0) : 0;
+                    const nextP = h < 23 ? (d.hourly.precipitation?.[h + 1] || 0) : 0;
+                    const isUnstable = prevP > 0.05 || nextP > 0.05 || (cLow !== null && cLow > 18) || (cTot !== null && cTot > 25);
+
+                    if (isUnstable) {
+                        displayWCode = (cLow !== null && cLow >= 75) ? 3 : 2; // Passages nuageux / éclaircies (⛅)
+                    } else {
+                        displayWCode = Logic.adjustCodeForHumanPerception(rawWCode, cLow, cTot, currUv, currPrecip);
+                    }
+                }
             } else {
                 // Jours suivants : temps diurne représentatif (entre lever et coucher du soleil)
                 displayWCode = Logic.getDaytimeWeatherCode(d.hourly, state.day, riseH, setH, d.daily.weather_code[state.day]);
@@ -1339,9 +1413,14 @@
             renderWindDetails();
         };
 
+        const saveLastCity = (lat, lon, name) => {
+            try {
+                localStorage.setItem('mv_last_city', JSON.stringify({ lat, lon, name }));
+            } catch(e) {}
+        };
+
         const fetchW = async () => {
             state.day = 0;
-            // Feedback visuel immédiat : nom de ville actualisé, ville clignotante et sablier à la place de l'icône météo
             if (state.config.name && state.config.name !== '...') {
                 document.getElementById('btn-city').innerText = state.config.name;
             }
@@ -1355,36 +1434,33 @@
 
             const base=`latitude=${state.config.lat}&longitude=${state.config.lon}&timezone=auto&forecast_days=8`;
             const ch=`hourly=precipitation,rain,showers,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,apparent_temperature,uv_index,cloud_cover,cloud_cover_low`;
+            const all6Models = 'meteofrance_arome_france,meteofrance_arpege_europe,ecmwf_ifs025,gfs_seamless,icon_seamless,gem_global';
 
             try {
-                // Requêtes exécutées en parallèle (gain de vitesse x3)
-                const p1 = fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m,weather_code,is_day,cloud_cover,cloud_cover_low&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}&minutely_15=precipitation`)
+                // 1. Météo principale + radar 15m
+                const p1 = fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m,weather_code,is_day,cloud_cover,cloud_cover_low,precipitation,uv_index&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}&minutely_15=precipitation`)
                     .then(async r => {
                         if (!r.ok) return null;
                         const data = await r.json();
                         state.weather = data;
-                        render(); // Rendu progressif : météo principale affichée dès 300ms
+                        render(); // Rendu immédiat dès l'arrivée du flux principal (~300ms)
                         return data;
                     }).catch(e => { console.error("Erreur météo de base", e); return null; });
 
-                const p2 = fetch(`https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=ecmwf_ifs025,gfs_seamless,icon_seamless,gem_global`)
+                // 2. Ensemble des 6 modèles réunis dans UNE SEULE requête ultra-rapide
+                const p2 = fetch(`https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=${all6Models}`)
                     .then(r => r.ok ? r.json() : null).catch(() => null);
 
-                const p3 = fetch(`https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=meteofrance_arome_france,meteofrance_arpege_europe`)
-                    .then(r => r.ok ? r.json() : null).catch(() => null);
-
-                const [wData, globalData, regionalData] = await Promise.all([p1, p2, p3]);
+                const [wData, modelsRes] = await Promise.all([p1, p2]);
 
                 if (wData) {
                     state.weather = wData;
                     state.modelsData = { hourly: {} };
-                    if (globalData && globalData.hourly) {
-                        Object.assign(state.modelsData.hourly, globalData.hourly);
+                    if (modelsRes && modelsRes.hourly) {
+                        Object.assign(state.modelsData.hourly, modelsRes.hourly);
                     }
-                    if (regionalData && regionalData.hourly) {
-                        Object.assign(state.modelsData.hourly, regionalData.hourly);
-                    }
-                    render(); // Consolidation finale avec l'ensemble des modèles
+                    render(); // Consolidation avec les 6 modèles
+                    saveLastCity(state.config.lat, state.config.lon, state.config.name);
                 }
             } catch(e) {
                 console.error("Erreur lors de la récupération, essai en mode dégradé...", e);
@@ -1402,28 +1478,107 @@
             }
         };
 
-        const useGeo = async () => {
-            const btn=document.getElementById('btn-geo');
-            btn.className='geo-btn loading';
-            document.getElementById('btn-city').innerText="RECHERCHE...";
-            try {
-                const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:8000,enableHighAccuracy:true}));
-                const {latitude:lat,longitude:lon}=pos.coords;
-                const res=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=12`);
-                const data=await res.json();
-                state.config.lat=lat; state.config.lon=lon;
-                state.config.name=(data.address.city||data.address.town||data.address.village||"MA POSITION").toUpperCase();
-                btn.className='geo-btn locked-gps';
-            } catch(e) {
-                try {
-                    const r=await fetch('https://ipapi.co/json/');
-                    const d=await r.json();
-                    state.config.lat=d.latitude; state.config.lon=d.longitude;
-                    state.config.name=d.city.toUpperCase();
-                    btn.className='geo-btn';
-                } catch { state.config.name="LILLE (DÉFAUT)"; }
+        const calcDistanceKm = (lat1, lon1, lat2, lon2) => {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        };
+
+        let geoWatchId = null;
+        let geoTimeoutTimer = null;
+
+        const stopGeo = () => {
+            if (geoWatchId !== null) {
+                navigator.geolocation.clearWatch(geoWatchId);
+                geoWatchId = null;
             }
-            fetchW();
+            if (geoTimeoutTimer !== null) {
+                clearTimeout(geoTimeoutTimer);
+                geoTimeoutTimer = null;
+            }
+        };
+
+        const useGeo = (isManual = false) => {
+            const btn = document.getElementById('btn-geo');
+            btn.className = 'geo-btn loading';
+            if (isManual) {
+                document.getElementById('btn-city').innerText = "RECHERCHE GPS...";
+            }
+
+            if (!navigator.geolocation) {
+                btn.className = 'geo-btn';
+                return;
+            }
+
+            // Arrêter toute veille GPS précédente
+            stopGeo();
+
+            // Arrêt automatique de la recherche après 45 secondes si aucun signal n'aboutit
+            geoTimeoutTimer = setTimeout(() => {
+                if (geoWatchId !== null) {
+                    navigator.geolocation.clearWatch(geoWatchId);
+                    geoWatchId = null;
+                }
+                btn.className = 'geo-btn';
+                if (isManual) {
+                    btn.classList.add('geo-error');
+                    setTimeout(() => btn.classList.remove('geo-error'), 2000);
+                    // Rétablir le nom de la ville actuelle si resté sur "RECHERCHE GPS..."
+                    document.getElementById('btn-city').innerText = state.config.name;
+                }
+            }, 45000);
+
+            // Veille active (watchPosition) : écoute continue jusqu'à obtention du signal précis
+            geoWatchId = navigator.geolocation.watchPosition(
+                async (pos) => {
+                    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+
+                    // Si la précision est excellente (< 100m) ou après premier retour utilisable
+                    if (accuracy && accuracy < 100) {
+                        navigator.geolocation.clearWatch(geoWatchId);
+                        geoWatchId = null;
+                        clearTimeout(geoTimeoutTimer);
+                        geoTimeoutTimer = null;
+                    }
+
+                    // Géocodage inversé pour trouver le nom de la commune
+                    let newCityName = state.config.name;
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=12`);
+                        const data = await res.json();
+                        newCityName = (data.address.city || data.address.town || data.address.village || data.address.municipality || state.config.name).toUpperCase();
+                    } catch(e) {}
+
+                    const dist = calcDistanceKm(state.config.lat, state.config.lon, lat, lon);
+                    btn.className = 'geo-btn locked-gps';
+
+                    // Si on a bougé (> 1.5 km), clic manuel ou premier chargement : mise à jour immédiate
+                    if (dist > 1.5 || isManual || !state.weather) {
+                        state.config.lat = lat;
+                        state.config.lon = lon;
+                        state.config.name = newCityName;
+                        fetchW();
+                    }
+                },
+                (err) => {
+                    // Erreur temporaire : on ne coupe pas immédiatement, on laisse courir les 45s
+                    if (err.code === err.PERMISSION_DENIED) {
+                        if (geoWatchId !== null) navigator.geolocation.clearWatch(geoWatchId);
+                        if (geoTimeoutTimer !== null) clearTimeout(geoTimeoutTimer);
+                        btn.className = 'geo-btn';
+                        if (isManual) document.getElementById('btn-city').innerText = state.config.name;
+                    }
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 45000,
+                    maximumAge: 10000
+                }
+            );
         };
 
         const renderRainDetails = () => {
@@ -1649,7 +1804,7 @@
         };
 
         return {
-            fetch:fetchW, useGeo, state, render, renderRainDetails, renderComfortDetails, renderWindDetails,
+            fetch:fetchW, useGeo, stopGeo, state, render, renderRainDetails, renderComfortDetails, renderWindDetails,
             adj:(k,v)=>{ let n=state.config[k]+v; if(n>23)n=0; if(n<0)n=23; state.config[k]=n; document.getElementById(`v-${k}`).innerText=n.toString().padStart(2,'0'); }
         };
     })();
@@ -1677,6 +1832,9 @@
                     div.className = 'res-row';
                     div.innerHTML = `<b>${c.name}</b> <small style="opacity:0.6">${c.admin1 || ''} (${c.country_code || ''})</small>`;
                     div.onclick = () => {
+                        window.app.stopGeo?.();
+                        const btn = document.getElementById('btn-geo');
+                        if (btn) btn.className = 'geo-btn'; // Épingle grisée (mode ville manuelle)
                         window.app.state.config = {
                             ...window.app.state.config,
                             lat: c.latitude,
@@ -1696,12 +1854,18 @@
 
     let st;
     document.getElementById('city-trigger').onclick=()=>window.ui.toggleSearch(true);
-    document.getElementById('btn-geo').onclick=e=>{ e.stopPropagation(); window.app.useGeo(); };
+    document.getElementById('btn-geo').onclick=e=>{ e.stopPropagation(); window.app.useGeo(true); };
     document.getElementById('inp-city').oninput=e=>{ clearTimeout(st); st=setTimeout(()=>window.ui.search(e.target.value),400); };
     document.getElementById('card-aller').onclick=()=>window.ui.toggleConfig(true);
     document.getElementById('card-retour').onclick=()=>window.ui.toggleConfig(true);
     document.getElementById('timeline-trigger').onclick=()=>window.ui.toggleRainDetails(true);
-    window.onload=()=>{ ['as','ae','rs','re'].forEach(k=>document.getElementById(`v-${k}`).innerText=window.app.state.config[k].toString().padStart(2,'0')); window.app.useGeo(); };
+    window.onload=()=>{
+        ['as','ae','rs','re'].forEach(k=>document.getElementById(`v-${k}`).innerText=window.app.state.config[k].toString().padStart(2,'0'));
+        // 1. Lancement immédiat de la météo sur la dernière ville connue (0 seconde d'attente satellite)
+        window.app.fetch();
+        // 2. Détection GPS en tâche de fond : si la position a changé (> 1.5 km), la météo s'actualise automatiquement
+        window.app.useGeo(false);
+    };
 }
 </script>
 </body>
