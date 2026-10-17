@@ -335,6 +335,15 @@
         <div id="lbl-date" class="date-display">--</div>
     </div>
 
+    <!-- Bannière d'alerte bien visible en cas d'échec de mise à jour -->
+    <div id="banner-sync-error" style="display:none;margin:-4px 0 10px 0;padding:8px 12px;background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.45);border-radius:10px;font-size:10px;font-weight:700;color:#fca5a5;align-items:center;justify-content:space-between;box-shadow:0 0 12px rgba(239,68,68,0.15);">
+        <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:12px;">⚠️</span>
+            <span>NON SYNCHRONISÉ · NOUVEL ESSAI DANS <b id="sync-countdown" style="color:#fff;font-family:monospace;font-size:11px;">30</b>s</span>
+        </div>
+        <span style="text-decoration:underline;cursor:pointer;color:var(--accent);font-weight:800;font-size:10.5px;" onclick="window.app.fetch()">Réessayer</span>
+    </div>
+
     <div class="hero-section">
         <div class="temp-container">
             <div id="hero-icon" class="hero-icon"></div>
@@ -1130,9 +1139,11 @@
     window.app = (() => {
         // Chargement immédiat de la dernière ville enregistrée (ou Lille par défaut)
         let savedCity = null;
+        let savedManual = false;
         try {
             const raw = localStorage.getItem('mv_last_city');
             if (raw) savedCity = JSON.parse(raw);
+            savedManual = localStorage.getItem('mv_is_manual') === 'true';
         } catch(e) {}
 
         const state = {
@@ -1145,12 +1156,63 @@
                 rs: DEFAULT_COMMUTE.soir_retour_start,
                 re: DEFAULT_COMMUTE.soir_retour_end
             },
+            isManual: savedManual,
             weather: null,
             modelsData: null,
-            day: 0
+            day: 0,
+            syncFailed: false
         };
 
+        // Cache multi-villes : mémoire indépendante par ville (< 30 min)
+        const cityCache = {};
+        const getCityKey = (lat, lon) => `${Number(lat).toFixed(2)}_${Number(lon).toFixed(2)}`;
+
         const render = () => {
+            const bannerEl = document.getElementById('banner-sync-error');
+            if (state.syncFailed) {
+                if (bannerEl) bannerEl.style.display = 'flex';
+                document.getElementById('lbl-temp').innerText = "--";
+                document.getElementById('lbl-feels').innerText = "--°C";
+                document.getElementById('temp-aller').innerText = "--°C";
+                document.getElementById('temp-retour').innerText = "--°C";
+                document.getElementById('lbl-gusts-max').innerText = "-- km/h";
+                document.getElementById('lbl-uv').innerText = "--";
+                document.getElementById('wind-curr-val').innerText = "-- km/h";
+                document.getElementById('hero-icon').innerHTML = '<div style="font-size:32px;opacity:0.4;filter:grayscale(1);">⚠️</div>';
+                
+                document.getElementById('alert-aller').innerText = "NON SYNCHRONISÉ";
+                document.getElementById('alert-aller').style.color = "var(--warn)";
+                document.getElementById('desc-aller').innerText = "Données non vérifiées";
+                document.getElementById('alert-retour').innerText = "NON SYNCHRONISÉ";
+                document.getElementById('alert-retour').style.color = "var(--warn)";
+                document.getElementById('desc-retour').innerText = "Données non vérifiées";
+
+                ['conf-badge-aller','conf-badge-retour'].forEach(id=>{
+                    const b = document.getElementById(id);
+                    if (b) b.style.borderColor = 'var(--glass-border)';
+                });
+                ['conf-val-aller','conf-val-retour'].forEach(id=>{
+                    const v = document.getElementById(id);
+                    if (v) { v.innerText = '--%'; v.style.color = 'var(--text-muted)'; }
+                });
+                ['conf-sub-aller','conf-sub-retour'].forEach(id=>{
+                    const s = document.getElementById(id);
+                    if (s) s.innerText = 'Non vérifié';
+                });
+                ['dot-m','dot-mi','dot-s'].forEach(id=>{
+                    const d = document.getElementById(id);
+                    if (d) { d.style.background = 'var(--text-muted)'; d.style.boxShadow = 'none'; }
+                });
+                ['ico-m','ico-mi','ico-s'].forEach(id=>{
+                    const ic = document.getElementById(id);
+                    if (ic) ic.innerHTML = '<div style="opacity:0.3;font-size:12px;">--</div>';
+                });
+                document.querySelectorAll('.day-box .d-temp').forEach(el => el.innerText = '--°');
+                return;
+            } else {
+                if (bannerEl) bannerEl.style.display = 'none';
+            }
+
             if (!state.weather) return;
             try {
                 const d=state.weather, now=new Date(), h=now.getHours(), m=now.getMinutes();
@@ -1477,77 +1539,208 @@
             } catch(e) {}
         };
 
-        const fetchW = async () => {
+        const fetchWithTimeout = async (url, ms = 7500) => {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), ms);
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                clearTimeout(id);
+                return response;
+            } catch (err) {
+                clearTimeout(id);
+                throw err;
+            }
+        };
+
+        const reverseGeocode = async (lat, lon) => {
+            try {
+                const res = await fetchWithTimeout(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=12`, 3000);
+                if (res.ok) {
+                    const data = await res.json();
+                    return (data.address.city || data.address.town || data.address.village || data.address.municipality || '').toUpperCase();
+                }
+            } catch(e) {}
+            return null;
+        };
+
+        let isFetching = false;
+        let retryTimer = null;
+        let countdownInterval = null;
+
+        const clearRetryTimers = () => {
+            if (retryTimer) {
+                clearTimeout(retryTimer);
+                retryTimer = null;
+            }
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+        };
+
+        const schedule30sRetry = () => {
+            clearRetryTimers();
+            let timeLeft = 30;
+            const banner = document.getElementById('banner-sync-error');
+            if (banner) banner.style.display = 'flex';
+            const cdEl = document.getElementById('sync-countdown');
+            if (cdEl) cdEl.innerText = timeLeft.toString();
+
+            countdownInterval = setInterval(() => {
+                timeLeft--;
+                const curCd = document.getElementById('sync-countdown');
+                if (curCd) curCd.innerText = Math.max(0, timeLeft).toString();
+                if (timeLeft <= 0) {
+                    clearRetryTimers();
+                    fetchW(0); // Relance automatique après 30 secondes
+                }
+            }, 1000);
+        };
+
+        const fetchW = async (attempt = 0) => {
+            clearRetryTimers();
+            if (attempt === 0) {
+                isFetching = false;
+            } else if (isFetching) {
+                return;
+            }
+            isFetching = true;
+
             state.day = 0;
             if (state.config.name && state.config.name !== '...') {
                 document.getElementById('btn-city').innerText = state.config.name;
             }
             document.querySelector('.city-group')?.classList.add('loading-city');
             const heroIconEl = document.getElementById('hero-icon');
-            if (heroIconEl) heroIconEl.innerHTML = '<div class="hero-loading-hourglass">⏳</div>';
+            if (heroIconEl && !state.weather) heroIconEl.innerHTML = '<div class="hero-loading-hourglass">⏳</div>';
 
             const syncEl = document.getElementById('lbl-sync');
-            if (syncEl) syncEl.innerHTML = '<span class="loading-spin">⏳</span> Actualisation...';
+            if (syncEl) {
+                if (attempt === 0) {
+                    syncEl.innerHTML = '<span class="loading-spin">⏳</span> Actualisation...';
+                } else {
+                    syncEl.innerHTML = `<span class="loading-spin">⏳</span> Connexion instable · Tentative ${attempt + 1}/3...`;
+                }
+            }
             document.querySelector('.app-window')?.classList.add('is-refreshing');
 
-            const base=`latitude=${state.config.lat}&longitude=${state.config.lon}&timezone=auto&forecast_days=8`;
-            const ch=`hourly=precipitation,rain,showers,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,apparent_temperature,uv_index,cloud_cover,cloud_cover_low`;
+            const base=`latitude=${state.config.lat}&longitude=${state.config.lon}&timezone=auto`;
+            const ch=`hourly=precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,apparent_temperature,uv_index,cloud_cover,cloud_cover_low`;
             const all6Models = 'meteofrance_arome_france,meteofrance_arpege_europe,ecmwf_ifs025,gfs_seamless,icon_seamless,gem_global';
+            const global4Models = 'ecmwf_ifs025,gfs_seamless,icon_seamless,gem_global';
+
+            let fetchSuccess = false;
 
             try {
-                // 1. Météo principale
-                const p1 = fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m,weather_code,is_day,cloud_cover,cloud_cover_low,precipitation,uv_index&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}`)
-                    .then(async r => {
-                        if (!r.ok) return null;
-                        const data = await r.json();
-                        state.weather = data;
-                        render(); // Rendu immédiat dès l'arrivée du flux principal (~300ms)
-                        return data;
-                    }).catch(e => { console.error("Erreur météo de base", e); return null; });
+                // 1. Météo principale 8 jours avec coupe-circuit 8s
+                const mainRes = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?${base}&forecast_days=8&current=temperature_2m,wind_speed_10m,weather_code,is_day,cloud_cover,cloud_cover_low,precipitation,uv_index&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}`, 8000);
+                if (!mainRes.ok) throw new Error("Flux météo principal HTTP " + mainRes.status);
+                state.weather = await mainRes.json();
+                state.syncFailed = false;
+                fetchSuccess = true;
+                render(); // Affichage quasi-immédiat (~300ms) des données météo principales de la nouvelle ville
+                saveLastCity(state.config.lat, state.config.lon, state.config.name);
 
-                // 2. Ensemble des modèles avec retry automatique et backoff si Open-Meteo temporise
+                // 2. Récupération des 6 modèles avec résilience et retry
+                // AROME (2j) et ARPEGE (4j) plafonnent à 4 jours max : limiter à 4 jours évite les erreurs 503 d'Open-Meteo
                 const fetchModelsWithRetry = async (retries = 2, delayMs = 600) => {
-                    const url = `https://api.open-meteo.com/v1/forecast?${base}&hourly=precipitation&models=${all6Models}`;
-                    for (let attempt = 0; attempt <= retries; attempt++) {
+                    const url6 = `https://api.open-meteo.com/v1/forecast?${base}&forecast_days=4&hourly=precipitation&models=${all6Models}`;
+                    for (let att = 0; att <= retries; att++) {
                         try {
-                            const res = await fetch(url);
+                            const res = await fetchWithTimeout(url6, 7500);
                             if (res.ok) {
                                 return await res.json();
                             }
+                            console.warn(`Modèles HTTP ${res.status} sur tentative ${att + 1}`);
                         } catch (err) {
-                            console.warn(`Tentative modèles ${attempt + 1} échouée`, err);
+                            console.warn(`Tentative modèles ${att + 1} échouée`, err);
                         }
-                        if (attempt < retries) {
-                            await new Promise(r => setTimeout(r, delayMs));
+                        if (att < retries) {
+                            await new Promise(r => setTimeout(r, delayMs * (att + 1)));
                         }
                     }
                     return null;
                 };
 
-                const [wData, modelsRes] = await Promise.all([p1, fetchModelsWithRetry()]);
-
-                if (wData) {
-                    state.weather = wData;
-                    state.modelsData = { hourly: {} };
-                    if (modelsRes && modelsRes.hourly) {
-                        Object.assign(state.modelsData.hourly, modelsRes.hourly);
-                    }
-                    render(); // Consolidation avec les modèles et mise à jour de l'overlay si ouvert
-                    saveLastCity(state.config.lat, state.config.lon, state.config.name);
+                const modelsRes = await fetchModelsWithRetry();
+                state.modelsData = { hourly: {} };
+                if (modelsRes && modelsRes.hourly) {
+                    Object.assign(state.modelsData.hourly, modelsRes.hourly);
                 }
+
+                // 3. Extension globale 8 jours (ECMWF, GFS, ICON, GEM) en tâche de fond pour couvrir les jours 5 à 8
+                fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?${base}&forecast_days=8&hourly=precipitation&models=${global4Models}`, 8000)
+                    .then(async r => {
+                        if (r.ok) {
+                            const ext = await r.json();
+                            if (ext && ext.hourly && state.modelsData) {
+                                Object.assign(state.modelsData.hourly, ext.hourly);
+                                render();
+                            }
+                        }
+                    }).catch(e => console.warn("Extension modèles 8j ignorée:", e));
+
+                // Mémorisation dans le cache multi-villes
+                const cityKey = getCityKey(state.config.lat, state.config.lon);
+                cityCache[cityKey] = {
+                    weather: state.weather,
+                    modelsData: state.modelsData,
+                    timestamp: Date.now()
+                };
+
+                render(); // Rendu consolidé avec les 6 modèles pour la ville sélectionnée
             } catch(e) {
-                console.error("Erreur lors de la récupération, essai en mode dégradé...", e);
+                console.warn(`Tentative météo ${attempt + 1}/3 échouée:`, e);
+
+                // Réitération automatique après pause rapide (1s après la 1ère tentative, 2s après la 2ème)
+                if (attempt < 2) {
+                    const pauseMs = attempt === 0 ? 1000 : 2000;
+                    if (syncEl) syncEl.innerHTML = `<span class="loading-spin">⏳</span> Connexion instable · Nouvel essai dans ${pauseMs / 1000}s...`;
+                    retryTimer = setTimeout(() => {
+                        isFetching = false;
+                        fetchW(attempt + 1);
+                    }, pauseMs);
+                    return; // Laisse le timer relancer la prochaine tentative sans clore l'affichage
+                }
+
+                // Essai en mode dégradé ultime (requête ultra-légère sans modèles)
+                let degSuccess = false;
                 try {
-                    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${base}&current=temperature_2m,wind_speed_10m,weather_code,is_day,cloud_cover,cloud_cover_low&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}`);
-                    state.weather = await r.json();
+                    const r = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?${base}&forecast_days=8&current=temperature_2m,wind_speed_10m,weather_code,is_day,cloud_cover,cloud_cover_low&daily=weather_code,temperature_2m_max,sunrise,sunset&${ch}`, 6000);
+                    if (r.ok) {
+                        state.weather = await r.json();
+                        state.modelsData = null;
+                        state.syncFailed = false;
+                        degSuccess = true;
+                        fetchSuccess = true;
+                        render();
+                    }
+                } catch(eDeg) {}
+
+                // Si même le mode dégradé échoue : APPLICATION STRICTE DU MODE ÉCHEC DE SYNCHRONISATION
+                if (!degSuccess) {
+                    console.error("Échec complet des 3 tentatives et du mode dégradé");
+                    state.syncFailed = true;
+                    state.weather = null;
                     state.modelsData = null;
-                    render();
-                } catch(e2) {
-                    console.error("Échec complet de la récupération météo", e2);
+                    render(); // Efface toutes les températures en '--' et affiche les alertes
+                    schedule30sRetry(); // Lance le décompte automatique de 30 secondes
+                    if (syncEl) syncEl.innerHTML = '<span style="color:#f87171;font-weight:700;">⚠️ Non synchronisé</span>';
+                    if (heroIconEl) heroIconEl.innerHTML = '<div style="font-size:32px;opacity:0.4;filter:grayscale(1);">⚠️</div>';
                 }
             } finally {
-                document.querySelector('.app-window')?.classList.remove('is-refreshing');
-                document.querySelector('.city-group')?.classList.remove('loading-city');
+                if (!retryTimer) {
+                    isFetching = false;
+                    document.querySelector('.app-window')?.classList.remove('is-refreshing');
+                    document.querySelector('.city-group')?.classList.remove('loading-city');
+                    if (syncEl && fetchSuccess && !state.syncFailed) {
+                        syncEl.innerText = 'Synchronisé';
+                    }
+                    if (heroIconEl && heroIconEl.innerHTML.includes('hero-loading-hourglass')) {
+                        if (state.weather && !state.syncFailed) render();
+                        else heroIconEl.innerHTML = state.syncFailed ? '<div style="font-size:32px;opacity:0.4;filter:grayscale(1);">⚠️</div>' : Logic.svg.sunCloud();
+                    }
+                }
             }
         };
 
@@ -1576,81 +1769,85 @@
         };
 
         const useGeo = (isManual = false) => {
+            // Ne jamais écraser une ville manuellement sélectionnée par la géolocalisation passive
+            if (state.isManual && !isManual) return;
+
             const btn = document.getElementById('btn-geo');
-            btn.className = 'geo-btn loading';
+            if (btn) btn.className = 'geo-btn loading';
             if (isManual) {
                 document.getElementById('btn-city').innerText = "RECHERCHE GPS...";
             }
 
             if (!navigator.geolocation) {
-                btn.className = 'geo-btn';
+                if (btn) btn.className = 'geo-btn';
                 return;
             }
 
-            // Arrêter toute veille GPS précédente
             stopGeo();
 
-            // Arrêt automatique de la recherche après 45 secondes si aucun signal n'aboutit
+            // Timeout de sécurité global (18s au lieu de 45s pour ne pas mouliner dans le vide)
             geoTimeoutTimer = setTimeout(() => {
-                if (geoWatchId !== null) {
-                    navigator.geolocation.clearWatch(geoWatchId);
-                    geoWatchId = null;
-                }
-                btn.className = 'geo-btn';
+                stopGeo();
+                if (btn) btn.className = 'geo-btn';
                 if (isManual) {
                     btn.classList.add('geo-error');
                     setTimeout(() => btn.classList.remove('geo-error'), 2000);
-                    // Rétablir le nom de la ville actuelle si resté sur "RECHERCHE GPS..."
                     document.getElementById('btn-city').innerText = state.config.name;
                 }
-            }, 45000);
+            }, 18000);
 
-            // Veille active (watchPosition) : écoute continue jusqu'à obtention du signal précis
-            geoWatchId = navigator.geolocation.watchPosition(
+            // Phase 1 : Localisation Éclair (Réseau / Wi-Fi / Cellulaire - 200ms)
+            // Récupère instantanément la position de l'agglomération sans allumer la puce satellite
+            navigator.geolocation.getCurrentPosition(
                 async (pos) => {
-                    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
-
-                    // Si la précision est excellente (< 100m) ou après premier retour utilisable
-                    if (accuracy && accuracy < 100) {
-                        navigator.geolocation.clearWatch(geoWatchId);
-                        geoWatchId = null;
-                        clearTimeout(geoTimeoutTimer);
-                        geoTimeoutTimer = null;
-                    }
-
-                    // Géocodage inversé pour trouver le nom de la commune
-                    let newCityName = state.config.name;
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=12`);
-                        const data = await res.json();
-                        newCityName = (data.address.city || data.address.town || data.address.village || data.address.municipality || state.config.name).toUpperCase();
-                    } catch(e) {}
-
+                    if (state.isManual && !isManual) return;
+                    const { latitude: lat, longitude: lon } = pos.coords;
                     const dist = calcDistanceKm(state.config.lat, state.config.lon, lat, lon);
-                    btn.className = 'geo-btn locked-gps';
 
-                    // Si on a bougé (> 1.5 km) ou clic manuel : mise à jour immédiate
+                    // Si la position réseau est différente (> 1.5 km) ou clic manuel
                     if (dist > 1.5 || isManual) {
                         state.config.lat = lat;
                         state.config.lon = lon;
-                        state.config.name = newCityName;
+                        const cityName = await reverseGeocode(lat, lon);
+                        if (cityName) state.config.name = cityName;
+                        fetchW();
+                    }
+                },
+                () => { /* Phase 1 ignorée silencieusement si non supportée */ },
+                { enableHighAccuracy: false, timeout: 2500, maximumAge: 300000 }
+            );
+
+            // Phase 2 : Confirmation par la puce satellite (GPS haute précision en tâche de fond)
+            geoWatchId = navigator.geolocation.watchPosition(
+                async (pos) => {
+                    if (state.isManual && !isManual) return;
+                    const { latitude: satLat, longitude: satLon, accuracy } = pos.coords;
+
+                    // Si précision excellente (< 80m), confirmation satellite acquise
+                    if (accuracy && accuracy < 80) {
+                        stopGeo();
+                    }
+
+                    const satDist = calcDistanceKm(state.config.lat, state.config.lon, satLat, satLon);
+                    if (btn) btn.className = 'geo-btn locked-gps';
+
+                    // Si la puce satellite donne une localisation différente (> 1.5 km), on recharge la météo !
+                    if (satDist > 1.5) {
+                        state.config.lat = satLat;
+                        state.config.lon = satLon;
+                        const cityName = await reverseGeocode(satLat, satLon);
+                        if (cityName) state.config.name = cityName;
                         fetchW();
                     }
                 },
                 (err) => {
-                    // Erreur temporaire : on ne coupe pas immédiatement, on laisse courir les 45s
                     if (err.code === err.PERMISSION_DENIED) {
-                        if (geoWatchId !== null) navigator.geolocation.clearWatch(geoWatchId);
-                        if (geoTimeoutTimer !== null) clearTimeout(geoTimeoutTimer);
-                        btn.className = 'geo-btn';
+                        stopGeo();
+                        if (btn) btn.className = 'geo-btn';
                         if (isManual) document.getElementById('btn-city').innerText = state.config.name;
                     }
                 },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 45000,
-                    maximumAge: 10000
-                }
+                { enableHighAccuracy: true, timeout: 18000, maximumAge: 0 }
             );
         };
 
@@ -1952,6 +2149,8 @@
 
         return {
             fetch:fetchW, useGeo, stopGeo, state, render, renderRainDetails, renderComfortDetails, renderWindDetails,
+            clearRetryTimers,
+            getCityCache: (lat, lon) => cityCache[getCityKey(lat, lon)],
             adj:(k,v)=>{ let n=state.config[k]+v; if(n>23)n=0; if(n<0)n=23; state.config[k]=n; document.getElementById(`v-${k}`).innerText=n.toString().padStart(2,'0'); }
         };
     })();
@@ -1980,14 +2179,35 @@
                     div.innerHTML = `<b>${c.name}</b> <small style="opacity:0.6">${c.admin1 || ''} (${c.country_code || ''})</small>`;
                     div.onclick = () => {
                         window.app.stopGeo?.();
+                        window.app.clearRetryTimers?.();
+                        window.app.state.isManual = true;
+                        try { localStorage.setItem('mv_is_manual', 'true'); } catch(e){}
                         const btn = document.getElementById('btn-geo');
                         if (btn) btn.className = 'geo-btn'; // Épingle grisée (mode ville manuelle)
+                        
+                        const lat = c.latitude;
+                        const lon = c.longitude;
+                        const name = c.name.toUpperCase();
                         window.app.state.config = {
                             ...window.app.state.config,
-                            lat: c.latitude,
-                            lon: c.longitude,
-                            name: c.name.toUpperCase()
+                            lat,
+                            lon,
+                            name
                         };
+                        
+                        // Mémoire multi-villes : afficher immédiatement si la ville est déjà en mémoire fraîche
+                        const cached = window.app.getCityCache?.(lat, lon);
+                        if (cached && (Date.now() - cached.timestamp < 30 * 60 * 1000)) {
+                            window.app.state.weather = cached.weather;
+                            window.app.state.modelsData = cached.modelsData;
+                            window.app.state.syncFailed = false;
+                            window.app.render();
+                        } else {
+                            window.app.state.modelsData = null;
+                            window.app.state.weather = null;
+                            window.app.state.syncFailed = false;
+                        }
+
                         window.ui.toggleSearch(false);
                         window.app.fetch();
                     };
@@ -2001,17 +2221,30 @@
 
     let st;
     document.getElementById('city-trigger').onclick=()=>window.ui.toggleSearch(true);
-    document.getElementById('btn-geo').onclick=e=>{ e.stopPropagation(); window.app.useGeo(true); };
+    document.getElementById('btn-geo').onclick=e=>{
+        e.stopPropagation();
+        window.app.clearRetryTimers?.();
+        window.app.state.isManual = false;
+        try { localStorage.setItem('mv_is_manual', 'false'); } catch(e){}
+        window.app.useGeo(true);
+    };
     document.getElementById('inp-city').oninput=e=>{ clearTimeout(st); st=setTimeout(()=>window.ui.search(e.target.value),400); };
     document.getElementById('card-aller').onclick=()=>window.ui.toggleConfig(true);
     document.getElementById('card-retour').onclick=()=>window.ui.toggleConfig(true);
     document.getElementById('timeline-trigger').onclick=()=>window.ui.toggleRainDetails(true);
     window.onload=()=>{
         ['as','ae','rs','re'].forEach(k=>document.getElementById(`v-${k}`).innerText=window.app.state.config[k].toString().padStart(2,'0'));
-        // 1. Lancement immédiat de la météo sur la dernière ville connue (0 seconde d'attente satellite)
+        // 1. Lancement immédiat de la météo sur la dernière ville enregistrée (0 seconde d'attente satellite)
         window.app.fetch();
-        // 2. Détection GPS en tâche de fond : si la position a changé (> 1.5 km), la météo s'actualise automatiquement
-        window.app.useGeo(false);
+        // 2. Détection GPS en tâche de fond uniquement si l'utilisateur n'a PAS choisi une ville manuelle
+        if (!window.app.state.isManual) {
+            window.app.useGeo(false);
+        }
+        // 3. Détection native de rétablissement réseau (sortie de zone blanche / mode avion)
+        window.addEventListener('online', () => {
+            console.log("Réseau mobile rétabli : actualisation automatique");
+            window.app.fetch();
+        });
     };
 }
 </script>
